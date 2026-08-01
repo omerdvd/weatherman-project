@@ -81,3 +81,12 @@ push notification via [ntfy](https://ntfy.sh) when conditions look bad
   within `alert_cooldown_minutes` (default 180) of the last alert. Once
   conditions clear and re-trigger later, a new alert fires immediately.
 - State (last alert timestamp) is kept in `state.json` next to the script.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for notes on secrets handling and network
+exposure.
+
+## License
+
+[MIT](LICENSE)
