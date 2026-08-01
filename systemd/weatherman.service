@@ -1,0 +1,10 @@
+[Unit]
+Description=Weatherman - weather/air quality alert check
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=weatherman
+WorkingDirectory=/opt/weatherman
+ExecStart=/opt/weatherman/venv/bin/python /opt/weatherman/weatherman.py --config /opt/weatherman/config.yaml
