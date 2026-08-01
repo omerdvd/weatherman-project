@@ -40,12 +40,15 @@ def save_state(state):
 
 
 def fetch_weather(cfg):
+    units = cfg.get("units", "celsius")
     params = {
         "latitude": cfg["location"]["latitude"],
         "longitude": cfg["location"]["longitude"],
         "timezone": cfg["location"].get("timezone", "auto"),
         "hourly": "temperature_2m,precipitation_probability,precipitation,weathercode,windspeed_10m",
         "forecast_days": 2,
+        "temperature_unit": units,
+        "windspeed_unit": "mph" if units == "fahrenheit" else "kmh",
     }
     resp = requests.get(WEATHER_URL, params=params, timeout=20)
     resp.raise_for_status()
@@ -68,6 +71,13 @@ def evaluate(cfg, weather, air_quality):
     """Return a list of alert message strings, or an empty list if all clear."""
     hours = cfg.get("forecast_hours", 24)
     t = cfg["thresholds"]
+    units = cfg.get("units", "celsius")
+    is_fahrenheit = units == "fahrenheit"
+    temp_symbol = "°F" if is_fahrenheit else "°C"
+    wind_unit = "mph" if is_fahrenheit else "km/h"
+    temp_high_key = "temp_high_fahrenheit" if is_fahrenheit else "temp_high_celsius"
+    temp_low_key = "temp_low_fahrenheit" if is_fahrenheit else "temp_low_celsius"
+    wind_key = "wind_speed_mph" if is_fahrenheit else "wind_speed_kmh"
     alerts = []
 
     w_hourly = weather["hourly"]
@@ -87,12 +97,12 @@ def evaluate(cfg, weather, air_quality):
         )
     if t.get("thunderstorm") and has_storm:
         alerts.append("Thunderstorms forecast")
-    if max_temp >= t["temp_high_celsius"]:
-        alerts.append(f"High temperature: {max_temp:.1f}°C")
-    if min_temp <= t["temp_low_celsius"]:
-        alerts.append(f"Low temperature: {min_temp:.1f}°C")
-    if max_wind >= t["wind_speed_kmh"]:
-        alerts.append(f"Strong wind: {max_wind:.0f} km/h")
+    if max_temp >= t[temp_high_key]:
+        alerts.append(f"High temperature: {max_temp:.1f}{temp_symbol}")
+    if min_temp <= t[temp_low_key]:
+        alerts.append(f"Low temperature: {min_temp:.1f}{temp_symbol}")
+    if max_wind >= t[wind_key]:
+        alerts.append(f"Strong wind: {max_wind:.0f} {wind_unit}")
 
     aq_hourly = air_quality["hourly"]
     n_aq = min(hours, len(aq_hourly["time"]))

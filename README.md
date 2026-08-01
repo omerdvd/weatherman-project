@@ -9,8 +9,15 @@ push notification via [ntfy](https://ntfy.sh) when conditions look bad
 
 - `weatherman.py` — the check script. Fetches forecast + air quality, evaluates
   thresholds, sends an ntfy push if any are exceeded.
-- `config.example.yaml` — copy to `config.yaml` and edit (location, ntfy
-  server/topic, thresholds).
+- `setup.py` — interactive installer. Prompts for your location (GPS
+  coordinates or a Google Maps Plus Code), preferred units (Celsius/
+  Fahrenheit), and ntfy settings (public ntfy.sh or a private server + topic),
+  then writes `config.yaml` for you.
+- `pluscode.py` — decodes Google Maps Plus Codes to GPS coordinates, used by
+  `setup.py`. No external geocoding API needed for full codes; short codes
+  (e.g. `V33Q+3Q5`) are resolved using a nearby reference city/coordinates.
+- `config.example.yaml` — documents the config format if you'd rather write
+  `config.yaml` by hand instead of using `setup.py`.
 - `systemd/weatherman.service` + `systemd/weatherman.timer` — run the check
   every 30 minutes via systemd.
 
@@ -27,22 +34,31 @@ push notification via [ntfy](https://ntfy.sh) when conditions look bad
    # copy this repo's contents into /opt/weatherman, e.g.:
    git clone <this-repo-url> /opt/weatherman
    cd /opt/weatherman
-   cp config.example.yaml config.yaml
    ```
 
-3. Edit `config.yaml`:
-   - `location.latitude` / `location.longitude` are already set to Kiryat
-     Motzkin (32.8526, 35.0895) — adjust if needed.
-   - `ntfy.server` is set to `https://ntfy.omeruthi.online`, topic
-     `weather-alerts`. Add `token` or `username`/`password` under `ntfy:` if
-     your server requires auth.
-   - Tune `thresholds:` to taste.
-
-4. Create a venv and install deps:
+3. Create a venv and install deps:
    ```bash
    python3 -m venv /opt/weatherman/venv
    /opt/weatherman/venv/bin/pip install -r /opt/weatherman/requirements.txt
    ```
+
+4. Run the interactive installer to create `config.yaml`:
+   ```bash
+   /opt/weatherman/venv/bin/python setup.py
+   ```
+   It will ask for:
+   - **Location**: GPS coordinates (`lat, lon`), or a Google Maps Plus Code.
+     Full plus codes (e.g. `8FVC9G8F+6X`) decode directly; short codes (e.g.
+     `V33Q+3Q5`) also need a nearby city name or approximate coordinates to
+     resolve unambiguously — you'll be prompted for one.
+   - **Units**: Celsius or Fahrenheit — this sets both the units fetched from
+     the weather API and which threshold keys are used.
+   - **ntfy**: the public `https://ntfy.sh` service, or your own private
+     server (you'll be asked for its `https://` URL and, optionally,
+     token/username+password auth), plus the topic name to publish to.
+
+   Prefer to configure by hand instead? Copy `config.example.yaml` to
+   `config.yaml` and edit it directly — see that file for the format.
 
 5. Create a dedicated system user (optional but recommended):
    ```bash
