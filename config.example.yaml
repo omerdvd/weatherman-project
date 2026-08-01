@@ -1,0 +1,36 @@
+# Copy this file to config.yaml and fill in your values.
+
+location:
+  name: "Kiryat Motzkin"
+  latitude: 32.8526
+  longitude: 35.0895
+  timezone: "Asia/Jerusalem"
+
+ntfy:
+  server: "https://ntfy.omeruthi.online"
+  topic: "weather-alerts"
+  # Optional: set if your ntfy server requires auth
+  # username: ""
+  # password: ""
+  # token: ""
+
+# Alert thresholds
+thresholds:
+  precipitation_probability_percent: 50   # alert if any forecast hour exceeds this
+  precipitation_mm: 1.0                   # alert if hourly rain volume exceeds this
+  thunderstorm: true                      # alert on any forecast thunderstorm (weathercode 95-99)
+  temp_high_celsius: 35.0                 # alert if forecast max temp exceeds this
+  temp_low_celsius: 5.0                   # alert if forecast min temp drops below this
+  wind_speed_kmh: 60.0                    # alert on strong wind gusts
+
+  # Air quality (Open-Meteo Air Quality API)
+  pm10: 100.0        # WHO/EU "poor" threshold, ug/m3
+  pm2_5: 50.0         # ug/m3
+  us_aqi: 100          # US AQI "Unhealthy for Sensitive Groups" and above
+  dust: 50.0           # ug/m3, dust concentration (relevant for Middle East dust storms)
+
+# How many hours ahead to look at in the forecast
+forecast_hours: 24
+
+# Avoid re-sending the same alert repeatedly within this many minutes
+alert_cooldown_minutes: 180
