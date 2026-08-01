@@ -42,9 +42,18 @@ push notification via [ntfy](https://ntfy.sh) when conditions look bad
    /opt/weatherman/venv/bin/pip install -r /opt/weatherman/requirements.txt
    ```
 
-4. Run the interactive installer to create `config.yaml`:
+4. Create a dedicated system user (optional but recommended, systemd-timer
+   installs run as root otherwise):
    ```bash
-   /opt/weatherman/venv/bin/python setup.py
+   useradd --system --home /opt/weatherman --shell /usr/sbin/nologin weatherman
+   chown -R weatherman:weatherman /opt/weatherman
+   ```
+
+5. Run the interactive installer to create `config.yaml` and (optionally) set
+   up scheduling:
+   ```bash
+   sudo -u weatherman /opt/weatherman/venv/bin/python setup.py
+   # or run as root/sudo directly if you want the systemd timer installed for you
    ```
    It will ask for:
    - **Location**: GPS coordinates (`lat, lon`), or a Google Maps Plus Code.
@@ -56,35 +65,33 @@ push notification via [ntfy](https://ntfy.sh) when conditions look bad
    - **ntfy**: the public `https://ntfy.sh` service, or your own private
      server (you'll be asked for its `https://` URL and, optionally,
      token/username+password auth), plus the topic name to publish to.
+   - **Scheduling**: how the periodic check should run —
+     - *systemd timer* (needs root; if not run as root, prints the manual
+       `systemctl`/unit-file steps instead of failing)
+     - *cron* (no root needed, works via the current user's crontab; running
+       setup again just replaces the previous cron entry instead of adding a
+       duplicate)
+     - *none* — skip scheduling entirely and run `weatherman.py` yourself
+       (manually, via your own scheduler, etc.)
 
    Prefer to configure by hand instead? Copy `config.example.yaml` to
-   `config.yaml` and edit it directly — see that file for the format.
+   `config.yaml` and edit it directly — see that file for the format. You can
+   also install/manage scheduling separately at any time via `scheduler.py`'s
+   `install_cron` / `install_systemd` / `remove_cron` / `remove_systemd`
+   functions, or by re-running `setup.py`.
 
-5. Create a dedicated system user (optional but recommended):
-   ```bash
-   useradd --system --home /opt/weatherman --shell /usr/sbin/nologin weatherman
-   chown -R weatherman:weatherman /opt/weatherman
-   ```
-
-6. Install and enable the systemd timer:
-   ```bash
-   cp systemd/weatherman.service systemd/weatherman.timer /etc/systemd/system/
-   systemctl daemon-reload
-   systemctl enable --now weatherman.timer
-   ```
-
-7. Test it manually first:
+6. Test it manually:
    ```bash
    sudo -u weatherman /opt/weatherman/venv/bin/python /opt/weatherman/weatherman.py --config /opt/weatherman/config.yaml --dry-run
    ```
    This prints any triggered alerts without sending to ntfy. Drop `--dry-run`
    to actually send. Use `--force` to bypass the alert cooldown for testing.
 
-8. Check timer status / logs:
-   ```bash
-   systemctl list-timers weatherman.timer
-   journalctl -u weatherman.service -f
-   ```
+7. Check scheduled runs:
+   - systemd: `systemctl list-timers weatherman.timer` and
+     `journalctl -u weatherman.service -f`
+   - cron: `crontab -l` to see the installed entry, and check
+     `weatherman.log` in the project directory for output
 
 ## How it works
 

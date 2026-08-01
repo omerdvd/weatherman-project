@@ -12,6 +12,7 @@ from pathlib import Path
 import requests
 import yaml
 
+import scheduler
 from pluscode import PlusCodeError, resolve
 
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
@@ -156,6 +157,31 @@ def ask_ntfy():
     return server, topic, auth
 
 
+def ask_scheduler(config_path):
+    print("\n--- Scheduling ---")
+    print("How should periodic checks be run?")
+    print("  1) systemd timer (recommended if this is a dedicated LXC/systemd host;")
+    print("     needs root, auto-restarts, logs to journalctl)")
+    print("  2) cron job (no root needed, works on any Linux host)")
+    print("  3) Don't install a scheduler (I'll run it manually or manage scheduling myself)")
+    choice = prompt("Enter 1, 2, or 3", "1")
+
+    if choice == "3":
+        print("Skipping scheduler install. Run checks manually with: python3 weatherman.py")
+        return
+
+    interval = prompt("How often should it check, in minutes?", "30")
+    try:
+        interval = int(interval)
+    except ValueError:
+        interval = 30
+
+    if choice == "2":
+        scheduler.install_cron(interval, config_path)
+    else:
+        scheduler.install_systemd(interval, config_path)
+
+
 def main():
     if CONFIG_PATH.exists():
         overwrite = prompt(f"{CONFIG_PATH.name} already exists. Overwrite? (y/N)", "N")
@@ -193,6 +219,8 @@ def main():
 
     print(f"\nWrote {CONFIG_PATH}")
     print("Test it with: python3 weatherman.py --dry-run")
+
+    ask_scheduler(CONFIG_PATH)
 
 
 if __name__ == "__main__":
