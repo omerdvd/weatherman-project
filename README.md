@@ -7,6 +7,11 @@ push notification via [ntfy](https://ntfy.sh) when conditions look bad
 
 ## Files
 
+- `install.sh` — bootstrap script for a fresh Linux host. Detects your
+  package manager (apt/dnf/yum/apk/pacman/zypper) and installs whatever's
+  missing (Python 3, the `venv` module, pip, a cron daemon, CA certificates),
+  creates a virtualenv, installs the Python requirements, then offers to
+  launch `setup.py`. Safe to re-run — it skips anything already installed.
 - `weatherman.py` — the check script. Fetches forecast + air quality, evaluates
   thresholds, sends an ntfy push if any are exceeded.
 - `setup.py` — interactive installer. Prompts for your location (GPS
@@ -23,12 +28,7 @@ push notification via [ntfy](https://ntfy.sh) when conditions look bad
 
 ## Setup on the LXC
 
-1. Install Python 3 and venv:
-   ```bash
-   apt update && apt install -y python3 python3-venv
-   ```
-
-2. Deploy the code:
+1. Deploy the code:
    ```bash
    mkdir -p /opt/weatherman
    # copy this repo's contents into /opt/weatherman, e.g.:
@@ -36,20 +36,25 @@ push notification via [ntfy](https://ntfy.sh) when conditions look bad
    cd /opt/weatherman
    ```
 
-3. Create a venv and install deps:
+2. Run the bootstrap script. On a bare/fresh LXC this installs every system
+   dependency it needs (Python 3, `venv`, `pip`, a cron daemon, CA
+   certificates) via your distro's package manager, then creates a
+   `venv/` and installs the Python requirements into it:
    ```bash
-   python3 -m venv /opt/weatherman/venv
-   /opt/weatherman/venv/bin/pip install -r /opt/weatherman/requirements.txt
+   ./install.sh
    ```
+   It'll ask at the end whether to launch the interactive setup immediately;
+   say no here if you want to create a dedicated system user first (next
+   step), then run setup manually afterwards.
 
-4. Create a dedicated system user (optional but recommended, systemd-timer
+3. Create a dedicated system user (optional but recommended, systemd-timer
    installs run as root otherwise):
    ```bash
    useradd --system --home /opt/weatherman --shell /usr/sbin/nologin weatherman
    chown -R weatherman:weatherman /opt/weatherman
    ```
 
-5. Run the interactive installer to create `config.yaml` and (optionally) set
+4. Run the interactive installer to create `config.yaml` and (optionally) set
    up scheduling:
    ```bash
    sudo -u weatherman /opt/weatherman/venv/bin/python setup.py
@@ -80,14 +85,14 @@ push notification via [ntfy](https://ntfy.sh) when conditions look bad
    `install_cron` / `install_systemd` / `remove_cron` / `remove_systemd`
    functions, or by re-running `setup.py`.
 
-6. Test it manually:
+5. Test it manually:
    ```bash
    sudo -u weatherman /opt/weatherman/venv/bin/python /opt/weatherman/weatherman.py --config /opt/weatherman/config.yaml --dry-run
    ```
    This prints any triggered alerts without sending to ntfy. Drop `--dry-run`
    to actually send. Use `--force` to bypass the alert cooldown for testing.
 
-7. Check scheduled runs:
+6. Check scheduled runs:
    - systemd: `systemctl list-timers weatherman.timer` and
      `journalctl -u weatherman.service -f`
    - cron: `crontab -l` to see the installed entry, and check
