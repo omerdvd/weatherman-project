@@ -28,6 +28,10 @@ push notification via [ntfy](https://ntfy.sh) when conditions look bad
 - `update.sh` — checks GitHub for a newer tagged release, shows a changelog
   and any `config.example.yaml` changes, and updates the local checkout on
   confirmation. See [Updating](#updating) below.
+- `merge_config.py` — helper invoked by `update.sh` that finds newly
+  introduced `config.yaml` options and, on confirmation, adds them in place
+  using `ruamel.yaml` (preserves comments/formatting) after backing up the
+  original file.
 
 ## Setup on the LXC
 
@@ -127,13 +131,19 @@ It will:
 1. `git fetch` tags from GitHub and compare your current checkout against
    the latest `vX.Y.Z` tag.
 2. If there's a newer one, show the changelog (`git log old..new --oneline`)
-   and, if `config.example.yaml` changed, a diff of what's new — your
-   `config.yaml` is **never** modified automatically, so review that diff
-   and add any new options yourself if you want them.
+   and, if `config.example.yaml` changed, a diff of what's new.
 3. Ask for confirmation before changing anything.
 4. On yes: refuse to proceed if you have uncommitted local edits to tracked
    files (to avoid clobbering them), otherwise check out the new tag and
    reinstall `requirements.txt` if it changed.
+5. If new `config.yaml` options were introduced, list them (with their
+   default values) and offer to add them to your `config.yaml`. Your
+   existing values are never touched or removed — only genuinely missing
+   keys get added. If you say yes, it backs up your current `config.yaml`
+   first (as `config.yaml.bak.<old-version>.<timestamp>`, never
+   overwritten) and merges the new keys in using `ruamel.yaml`, which
+   preserves your comments and formatting. Say no and it's left completely
+   unchanged, same as before.
 
 Nothing needs restarting afterward — systemd and cron both run
 `weatherman.py` fresh on every scheduled check, so the update takes effect
