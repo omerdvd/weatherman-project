@@ -13,6 +13,7 @@ import requests
 import yaml
 
 import scheduler
+import timezones
 from pluscode import PlusCodeError, resolve
 
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
@@ -45,7 +46,7 @@ home-automation project, not a certified weather or safety system - do not
 rely on it as your sole source of severe-weather or air-quality warnings.
 
 Credits:
-  Omer David (omerdvd@gmail.com)
+  Omer David (42729996+omerdvd@users.noreply.github.com)
   Claude (Anthropic) - https://claude.ai/code
 ==============================================================================
 """
@@ -131,6 +132,40 @@ def ask_units():
     print("\n--- Units ---")
     choice = prompt("Use (C)elsius or (F)ahrenheit?", "C").strip().upper()
     return "fahrenheit" if choice.startswith("F") else "celsius"
+
+
+def ask_timezone():
+    print("\n--- Timezone ---")
+    print("Enter a major city near you (e.g. New York, London, Tel Aviv, Sydney)")
+    print("and we'll figure out the timezone. Just press Enter to auto-detect it")
+    print("from your GPS coordinates instead.")
+    while True:
+        city = prompt("City", "")
+        if not city:
+            return "auto"
+
+        matches = timezones.search(city)
+        if not matches:
+            print(f"No timezone found for '{city}'. Try a different (usually "
+                  f"larger/nearby) city, or press Enter with no city to auto-detect.")
+            continue
+
+        if len(matches) == 1:
+            tz = matches[0]
+            confirm = prompt(f"Use timezone '{tz}'? (Y/n)", "Y").strip().lower()
+            if not confirm.startswith("n"):
+                return tz
+            continue
+
+        shown = matches[:15]
+        print(f"Multiple timezones matched '{city}':")
+        for i, tz in enumerate(shown, 1):
+            print(f"  {i}) {tz}")
+        if len(matches) > len(shown):
+            print(f"  ...and {len(matches) - len(shown)} more. Try a more specific city name if yours isn't listed.")
+        choice = prompt("Pick a number, or press Enter to search again", "")
+        if choice.isdigit() and 1 <= int(choice) <= len(shown):
+            return shown[int(choice) - 1]
 
 
 def convert_thresholds(units):
@@ -252,7 +287,7 @@ def main():
     server, topic, auth = ask_ntfy()
 
     location_name = prompt("Enter a short name for this location (used in alert titles)", "Home")
-    timezone = prompt("Enter an IANA timezone", "auto")
+    timezone = ask_timezone()
 
     config = {
         "location": {
