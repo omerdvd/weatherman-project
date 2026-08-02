@@ -49,3 +49,10 @@ forecast_hours: 24
 
 # Avoid re-sending the same alert repeatedly within this many minutes
 alert_cooldown_minutes: 180
+
+# Daily push with today's and tomorrow's forecast (with a weather emoji),
+# sent to the same ntfy topic as alerts. Checked on every scheduled run, so
+# actual delivery can lag `time` by up to your scheduling interval.
+daily_digest:
+  enabled: true
+  time: "07:00"   # 24-hour HH:MM, in the location's timezone

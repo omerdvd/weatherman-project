@@ -3,7 +3,9 @@
 Monitors the weather forecast and air quality (dust/PM10/PM2.5) for a fixed
 location using the free [Open-Meteo](https://open-meteo.com) API, and sends a
 push notification via [ntfy](https://ntfy.sh) when conditions look bad
-(rain/storms, extreme temperatures, strong wind, or poor air quality).
+(rain/storms, extreme temperatures, strong wind, or poor air quality). Can
+also send a daily forecast digest — today's and tomorrow's weather with an
+emoji for conditions at a glance — at a time of your choosing.
 
 ## Files
 
@@ -13,11 +15,13 @@ push notification via [ntfy](https://ntfy.sh) when conditions look bad
   creates a virtualenv, installs the Python requirements, then offers to
   launch `setup.py`. Safe to re-run — it skips anything already installed.
 - `weatherman.py` — the check script. Fetches forecast + air quality, evaluates
-  thresholds, sends an ntfy push if any are exceeded.
+  thresholds, sends an ntfy push if any are exceeded, and (if enabled) sends
+  the daily forecast digest once it's past the configured time each day.
 - `setup.py` — interactive installer. Prompts for your location (GPS
-  coordinates or a Google Maps Plus Code), preferred units (Celsius/
-  Fahrenheit), and ntfy settings (public ntfy.sh or a private server + topic),
-  then writes `config.yaml` for you.
+  coordinates, a Google Maps Plus Code, or a city + country), preferred units
+  (Celsius/Fahrenheit), ntfy settings (public ntfy.sh or a private server +
+  topic), and the daily digest (on/off, and what time to send it, in either
+  12-hour or 24-hour format), then writes `config.yaml` for you.
 - `pluscode.py` — decodes Google Maps Plus Codes to GPS coordinates, used by
   `setup.py`. No external geocoding API needed for full codes; short codes
   (e.g. `V33Q+3Q5`) are resolved using a nearby reference city/coordinates.
@@ -77,6 +81,10 @@ push notification via [ntfy](https://ntfy.sh) when conditions look bad
    - **ntfy**: the public `https://ntfy.sh` service, or your own private
      server (you'll be asked for its `https://` URL and, optionally,
      token/username+password auth), plus the topic name to publish to.
+   - **Daily digest**: whether to also send a daily push with today's and
+     tomorrow's forecast (with a weather emoji), and what time to send it —
+     enter the time in either 12-hour (`7:30 AM`) or 24-hour (`07:30`)
+     format, whichever you prefer.
    - **Scheduling**: how the periodic check should run —
      - *systemd timer* (needs root; if not run as root, prints the manual
        `systemctl`/unit-file steps instead of failing)
@@ -115,7 +123,17 @@ push notification via [ntfy](https://ntfy.sh) when conditions look bad
 - To avoid notification spam, it won't re-send while conditions remain bad
   within `alert_cooldown_minutes` (default 180) of the last alert. Once
   conditions clear and re-trigger later, a new alert fires immediately.
-- State (last alert timestamp) is kept in `state.json` next to the script.
+- If `daily_digest.enabled` is set, every run also checks whether it's past
+  `daily_digest.time` (in the location's timezone) and today's digest hasn't
+  been sent yet; if so, it pushes today's and tomorrow's forecast — high/low
+  temp, chance of rain, and a weather emoji (☀️🌧️⛈️❄️ etc.) per day — to the
+  same ntfy topic as alerts. Since this is only checked on the regular
+  schedule, actual delivery can lag the configured time by up to your
+  scheduling interval (e.g. up to ~30 minutes with the default). Use
+  `--force` to send it immediately regardless of time/already-sent, for
+  testing.
+- State (last alert timestamp, last digest date) is kept in `state.json`
+  next to the script.
 
 ## Updating
 
