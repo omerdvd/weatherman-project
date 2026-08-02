@@ -4,3 +4,4 @@ venv/
 __pycache__/
 *.pyc
 weatherman.log
+.update.lock

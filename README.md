@@ -25,6 +25,9 @@ push notification via [ntfy](https://ntfy.sh) when conditions look bad
   `config.yaml` by hand instead of using `setup.py`.
 - `systemd/weatherman.service` + `systemd/weatherman.timer` — run the check
   every 30 minutes via systemd.
+- `update.sh` — checks GitHub for a newer tagged release, shows a changelog
+  and any `config.example.yaml` changes, and updates the local checkout on
+  confirmation. See [Updating](#updating) below.
 
 ## Setup on the LXC
 
@@ -109,6 +112,48 @@ push notification via [ntfy](https://ntfy.sh) when conditions look bad
   within `alert_cooldown_minutes` (default 180) of the last alert. Once
   conditions clear and re-trigger later, a new alert fires immediately.
 - State (last alert timestamp) is kept in `state.json` next to the script.
+
+## Updating
+
+The local install is a git checkout, and releases are git tags (`v1.0.0`,
+`v1.1.0`, ...), so updating just means fetching new tags and checking one
+out:
+
+```bash
+./update.sh
+```
+
+It will:
+1. `git fetch` tags from GitHub and compare your current checkout against
+   the latest `vX.Y.Z` tag.
+2. If there's a newer one, show the changelog (`git log old..new --oneline`)
+   and, if `config.example.yaml` changed, a diff of what's new — your
+   `config.yaml` is **never** modified automatically, so review that diff
+   and add any new options yourself if you want them.
+3. Ask for confirmation before changing anything.
+4. On yes: refuse to proceed if you have uncommitted local edits to tracked
+   files (to avoid clobbering them), otherwise check out the new tag and
+   reinstall `requirements.txt` if it changed.
+
+Nothing needs restarting afterward — systemd and cron both run
+`weatherman.py` fresh on every scheduled check, so the update takes effect
+on the next run.
+
+Integrity note: this intentionally doesn't do a separate SHA256/checksum
+step. Git commits are content-addressed (a Merkle tree over the full file
+tree), so comparing the local commit/tag against GitHub's already gives the
+same guarantee a manual checksum would - any tampering changes the hash.
+
+### Cutting a new release (for maintainers)
+
+```bash
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+Optionally create a matching GitHub Release from that tag for release notes.
+`update.sh` only looks at `v*` tags, not raw commits on `main`, so nothing
+is "released" until it's tagged.
 
 ## Security
 
