@@ -121,7 +121,7 @@ This software is provided "as is", without warranty of any kind, express or
 implied. Use it at your own risk. This is a personal home-automation project,
 not a certified weather or safety system — don't rely on it as your sole
 source of severe-weather or air-quality warnings. See [LICENSE](LICENSE) for
-the full MIT license text.
+the full license text.
 
 ## Credits
 
@@ -130,4 +130,8 @@ the full MIT license text.
 
 ## License
 
-[MIT](LICENSE)
+[PolyForm Noncommercial License 1.0.0](LICENSE) — free for noncommercial use
+(personal, educational, research, hobby, nonprofit, etc.). Commercial use
+requires a separate license — contact
+[42729996+omerdvd@users.noreply.github.com](mailto:42729996+omerdvd@users.noreply.github.com)
+to request one.
