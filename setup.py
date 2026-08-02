@@ -101,6 +101,121 @@ def describe_geocode_result(result):
     return label
 
 
+# Common alternate names/abbreviations for countries whose Open-Meteo
+# "country" field wouldn't otherwise substring-match them.
+COUNTRY_ALIASES = {
+    "usa": "united states",
+    "us": "united states",
+    "u.s.": "united states",
+    "u.s.a.": "united states",
+    "america": "united states",
+    "uk": "united kingdom",
+    "u.k.": "united kingdom",
+    "britain": "united kingdom",
+    "great britain": "united kingdom",
+    "england": "united kingdom",
+    "scotland": "united kingdom",
+    "wales": "united kingdom",
+    "uae": "united arab emirates",
+    "south korea": "korea",
+    "north korea": "korea",
+    "russia": "russian federation",
+    "vietnam": "viet nam",
+    "laos": "lao people's democratic republic",
+    "syria": "syrian arab republic",
+    "iran": "iran, islamic republic of",
+    "bolivia": "bolivia, plurinational state of",
+    "venezuela": "venezuela, bolivarian republic of",
+    "tanzania": "united republic of tanzania",
+    "moldova": "republic of moldova",
+    "czechia": "czech republic",
+    "ivory coast": "cote d'ivoire",
+    "cape verde": "cabo verde",
+    "swaziland": "eswatini",
+    "burma": "myanmar",
+}
+
+
+def _normalize_country(text):
+    q = text.strip().lower()
+    return COUNTRY_ALIASES.get(q, q)
+
+
+def _country_matches(candidate, country_query):
+    q = _normalize_country(country_query)
+    country = _normalize_country(candidate.get("country") or "")
+    code = (candidate.get("country_code") or "").strip().lower()
+    if not q:
+        return False
+    return q == country or q == code or q in country or country in q
+
+
+def _pick_location_from_geocode(city, country, candidates):
+    """Filter geocoding candidates to the given country and let the user pick
+    one. Returns (lat, lon) tuple, or None to signal 'ask again'."""
+    matches = [c for c in candidates if _country_matches(c, country)]
+
+    if not matches:
+        found_countries = sorted({c.get("country") for c in candidates if c.get("country")})
+        if found_countries:
+            print(f"No match for '{city}' in '{country}'. '{city}' was found in: "
+                  f"{', '.join(found_countries)}.")
+        else:
+            print(f"No results for '{city}, {country}'.")
+        print("Try again, e.g. 'Paris, France'.")
+        return None
+
+    if len(matches) == 1:
+        result = matches[0]
+        confirm = prompt(f"Use '{describe_geocode_result(result)}'? (Y/n)", "Y")
+        if not confirm.strip().lower().startswith("n"):
+            return result["latitude"], result["longitude"]
+        return None
+
+    shown = matches[:10]
+    print(f"Multiple places matched '{city}, {country}':")
+    for i, result in enumerate(shown, 1):
+        print(f"  {i}) {describe_geocode_result(result)}")
+    if len(matches) > len(shown):
+        print(f"  ...and {len(matches) - len(shown)} more. Try adding a state/region if yours isn't listed.")
+    choice = prompt("Pick a number, or press Enter to search again", "")
+    if choice.isdigit() and 1 <= int(choice) <= len(shown):
+        result = shown[int(choice) - 1]
+        return result["latitude"], result["longitude"]
+    return None
+
+
+def ask_location_city_country():
+    while True:
+        text = prompt("Enter 'City, Country' (e.g. 'Paris, France')")
+        if not text or "," not in text:
+            print("Please enter both a city and country, separated by a comma, "
+                  "e.g. 'Paris, France'.")
+            continue
+        city, _, country = text.partition(",")
+        city = city.strip()
+        country = country.strip()
+        if not city or not country:
+            print("Please enter both a city and country, separated by a comma, "
+                  "e.g. 'Paris, France'.")
+            continue
+
+        try:
+            candidates = geocode_city_candidates(city)
+        except requests.RequestException as e:
+            print(f"Couldn't reach the geocoding service ({e}). Try again, or use "
+                  f"GPS coordinates / a Plus Code instead.")
+            continue
+
+        if not candidates:
+            print(f"No results for '{city}'. Try again, e.g. 'Paris, France'.")
+            continue
+
+        latlon = _pick_location_from_geocode(city, country, candidates)
+        if latlon:
+            return latlon
+
+
 def parse_latlon(text):
     parts = [p.strip() for p in text.replace(",", " ").split()]
     if len(parts) != 2:
@@ -116,7 +231,8 @@ def ask_location():
     print("How do you want to provide your location?")
     print("  1) GPS coordinates (e.g. 40.68922388147081, -74.04448846124427)")
     print("  2) Google Maps Plus Code (e.g. MXQ4+M5 New York, USA)")
-    choice = prompt("Enter 1 or 2", "1")
+    print("  3) City name and country (e.g. 'Paris, France')")
+    choice = prompt("Enter 1, 2, or 3", "1")
 
     if choice == "1":
         while True:
@@ -125,6 +241,9 @@ def ask_location():
             if latlon:
                 return latlon
             print("Couldn't parse that. Example: 40.68922388147081, -74.04448846124427")
+
+    if choice == "3":
+        return ask_location_city_country()
 
     # Plus code path
     while True:
