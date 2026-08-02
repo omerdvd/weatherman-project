@@ -17,7 +17,7 @@ location:
 units: celsius
 
 ntfy:
-  server: "https://ntfy.omeruthi.online"   # or "https://ntfy.sh" for the public service
+  server: "https://ntfy.example.com"   # or "https://ntfy.sh" for the public service
   topic: "weather-alerts"
   # Optional: set if your ntfy server requires auth
   # username: ""
