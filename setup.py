@@ -6,6 +6,7 @@ Run this once when installing the service:
     python3 setup.py
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -49,6 +50,9 @@ Credits:
   Omer David (42729996+omerdvd@users.noreply.github.com)
   Claude (Anthropic) - https://claude.ai/code
 ==============================================================================
+
+By continuing with this setup process, you agree to the above terms and
+conditions.
 """
 
 
@@ -65,6 +69,36 @@ def geocode_city(name):
     if not results:
         return None
     return results[0]["latitude"], results[0]["longitude"]
+
+
+def geocode_city_candidates(name, count=10):
+    """Look up a city via Open-Meteo's geocoding API (GeoNames-backed, so it
+    covers virtually every populated place worldwide, not just capitals).
+    Each result includes a 'timezone' field directly, so it doubles as a
+    timezone lookup with no separate database needed."""
+    resp = requests.get(
+        GEOCODING_URL,
+        params={"name": name, "count": count, "language": "en", "format": "json"},
+        timeout=20,
+    )
+    resp.raise_for_status()
+    results = resp.json().get("results") or []
+    return [r for r in results if r.get("timezone")]
+
+
+def describe_geocode_result(result):
+    parts = [result["name"]]
+    admin1 = result.get("admin1")
+    if admin1 and admin1 != result["name"]:
+        parts.append(admin1)
+    country = result.get("country")
+    if country:
+        parts.append(country)
+    label = ", ".join(parts)
+    population = result.get("population")
+    if population:
+        label += f" (pop. {population:,})"
+    return label
 
 
 def parse_latlon(text):
@@ -134,38 +168,89 @@ def ask_units():
     return "fahrenheit" if choice.startswith("F") else "celsius"
 
 
+def _pick_timezone_from_geocode(query, candidates):
+    """Show geocoding candidates and let the user pick one. Returns the chosen
+    timezone string, or None to signal 'search again' (ambiguous/declined)."""
+    if len(candidates) == 1:
+        result = candidates[0]
+        tz = result["timezone"]
+        confirm = prompt(f"Use timezone '{tz}' ({describe_geocode_result(result)})? (Y/n)", "Y")
+        if not confirm.strip().lower().startswith("n"):
+            return tz
+        return None
+
+    shown = candidates[:10]
+    print(f"Multiple places matched '{query}':")
+    for i, result in enumerate(shown, 1):
+        print(f"  {i}) {describe_geocode_result(result)} -> {result['timezone']}")
+    if len(candidates) > len(shown):
+        print(f"  ...and {len(candidates) - len(shown)} more. Try a more specific search "
+              f"(e.g. add a state/country) if yours isn't listed.")
+    choice = prompt("Pick a number, or press Enter to search again", "")
+    if choice.isdigit() and 1 <= int(choice) <= len(shown):
+        return shown[int(choice) - 1]["timezone"]
+    return None
+
+
+def _pick_timezone_offline(city):
+    """Fallback used when the geocoding API can't be reached. Matches against
+    a local, curated list of major cities and IANA zone names."""
+    matches = timezones.search(city)
+    if not matches:
+        return None, False
+
+    if len(matches) == 1:
+        tz = matches[0]
+        confirm = prompt(f"Use timezone '{tz}'? (Y/n)", "Y")
+        if not confirm.strip().lower().startswith("n"):
+            return tz, True
+        return None, True
+
+    shown = matches[:15]
+    print(f"Multiple timezones matched '{city}':")
+    for i, tz in enumerate(shown, 1):
+        print(f"  {i}) {tz}")
+    if len(matches) > len(shown):
+        print(f"  ...and {len(matches) - len(shown)} more. Try a more specific city name if yours isn't listed.")
+    choice = prompt("Pick a number, or press Enter to search again", "")
+    if choice.isdigit() and 1 <= int(choice) <= len(shown):
+        return shown[int(choice) - 1], True
+    return None, True
+
+
 def ask_timezone():
     print("\n--- Timezone ---")
-    print("Enter a major city near you (e.g. New York, London, Tel Aviv, Sydney)")
-    print("and we'll figure out the timezone. Just press Enter to auto-detect it")
-    print("from your GPS coordinates instead.")
+    print("Enter a nearby city (any size - e.g. New York, Buffalo, San Diego,")
+    print("Milan, Tel Aviv) and we'll look up its timezone. Just press Enter to")
+    print("auto-detect it from your GPS coordinates instead.")
     while True:
         city = prompt("City", "")
         if not city:
             return "auto"
 
-        matches = timezones.search(city)
-        if not matches:
-            print(f"No timezone found for '{city}'. Try a different (usually "
-                  f"larger/nearby) city, or press Enter with no city to auto-detect.")
-            continue
+        try:
+            candidates = geocode_city_candidates(city)
+        except requests.RequestException as e:
+            print(f"Couldn't reach the geocoding service ({e}); searching a local city list instead.")
+            candidates = None
 
-        if len(matches) == 1:
-            tz = matches[0]
-            confirm = prompt(f"Use timezone '{tz}'? (Y/n)", "Y").strip().lower()
-            if not confirm.startswith("n"):
+        if candidates:
+            tz = _pick_timezone_from_geocode(city, candidates)
+            if tz:
                 return tz
             continue
 
-        shown = matches[:15]
-        print(f"Multiple timezones matched '{city}':")
-        for i, tz in enumerate(shown, 1):
-            print(f"  {i}) {tz}")
-        if len(matches) > len(shown):
-            print(f"  ...and {len(matches) - len(shown)} more. Try a more specific city name if yours isn't listed.")
-        choice = prompt("Pick a number, or press Enter to search again", "")
-        if choice.isdigit() and 1 <= int(choice) <= len(shown):
-            return shown[int(choice) - 1]
+        if candidates is not None:
+            # Geocoding worked but found nothing - fall back to the offline
+            # list too, in case it's a well-known city the API didn't return.
+            print(f"No results for '{city}' from the online lookup; trying a local city list.")
+
+        tz, handled = _pick_timezone_offline(city)
+        if tz:
+            return tz
+        if not handled:
+            print(f"No timezone found for '{city}'. Try a different (usually "
+                  f"larger/nearby) city, or press Enter with no city to auto-detect.")
 
 
 def convert_thresholds(units):
@@ -272,7 +357,12 @@ def ask_scheduler(config_path):
         scheduler.install_systemd(interval, config_path)
 
 
+def clear_screen():
+    os.system("cls" if os.name == "nt" else "clear")
+
+
 def main():
+    clear_screen()
     print(DISCLAIMER)
     input("Press Enter to continue, or Ctrl+C to exit...")
 
