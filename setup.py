@@ -46,7 +46,7 @@ home-automation project, not a certified weather or safety system - do not
 rely on it as your sole source of severe-weather or air-quality warnings.
 
 Credits:
-  Omer David (omerdvd@gmail.com)
+  Omer David (42729996+omerdvd@users.noreply.github.com)
   Claude (Anthropic) - https://claude.ai/code
 ==============================================================================
 """

@@ -125,7 +125,7 @@ the full MIT license text.
 
 ## Credits
 
-- Omer David ([omerdvd@gmail.com](mailto:omerdvd@gmail.com))
+- Omer David ([42729996+omerdvd@users.noreply.github.com](mailto:42729996+omerdvd@users.noreply.github.com))
 - Claude ([Anthropic](https://claude.ai/code))
 
 ## License
