@@ -90,19 +90,40 @@ else
 fi
 
 # --- venv module ---
-if ! python3 -m venv --help >/dev/null 2>&1; then
-    log "python3 'venv' module not available, installing..."
+# `python3 -m venv --help` succeeds even when the actual environment-creation
+# machinery (ensurepip) is missing, e.g. on Ubuntu without python3-venv
+# installed - it only fails once you actually try to create one. So do a real
+# trial creation instead of trusting --help.
+venv_actually_works() {
+    local test_dir
+    test_dir="$(mktemp -d)"
+    if python3 -m venv "$test_dir/venv" >/dev/null 2>&1; then
+        rm -rf "$test_dir"
+        return 0
+    fi
+    rm -rf "$test_dir"
+    return 1
+}
+
+if ! venv_actually_works; then
+    log "python3 'venv' module isn't fully usable (ensurepip missing?), installing..."
+    PYVER="$(python3 -c 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}")')"
     case "$PKG_MANAGER" in
         apt)
-            PYVER="$(python3 -c 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}")')"
-            install_packages "python3-venv" || install_packages "python${PYVER}-venv"
+            install_packages "python${PYVER}-venv" || install_packages "python3-venv"
             ;;
         dnf|yum) install_packages python3-libs python3 ;;
         apk) install_packages py3-virtualenv ;;
         pacman) : ;; # bundled with python on Arch
         zypper) install_packages python3-venv ;;
-        *) warn "Please ensure the Python 'venv' module is installed." ;;
+        *) warn "Please ensure the Python 'venv' module (with ensurepip) is installed." ;;
     esac
+
+    if ! venv_actually_works; then
+        warn "python3 -m venv still doesn't work after attempting to install python${PYVER}-venv."
+        warn "Install it manually, e.g.: apt install python${PYVER}-venv"
+        exit 1
+    fi
 fi
 
 # --- pip (for ensurepip fallback / system pip) ---
