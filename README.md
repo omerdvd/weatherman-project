@@ -32,7 +32,7 @@ push notification via [ntfy](https://ntfy.sh) when conditions look bad
    ```bash
    mkdir -p /opt/weatherman
    # copy this repo's contents into /opt/weatherman, e.g.:
-   git clone <this-repo-url> /opt/weatherman
+   git clone https://github.com/omerdvd/weatherman-project.git /opt/weatherman
    cd /opt/weatherman
    ```
 
