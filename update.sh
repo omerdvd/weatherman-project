@@ -105,6 +105,45 @@ echo
 log "Updated to $LATEST_TAG."
 log "Nothing needs restarting: systemd/cron both run weatherman.py fresh on"
 log "each scheduled check, so the new code takes effect on the next run."
-if [ -n "$CONFIG_DIFF" ]; then
+
+if [ -n "$CONFIG_DIFF" ] && [ -f "$SCRIPT_DIR/config.yaml" ]; then
+    PYTHON_BIN="$VENV_DIR/bin/python"
+    [ -x "$PYTHON_BIN" ] || PYTHON_BIN="python3"
+
+    OLD_EXAMPLE_TMP="$(mktemp)"
+    NEW_EXAMPLE_TMP="$(mktemp)"
+    trap 'rm -f "$OLD_EXAMPLE_TMP" "$NEW_EXAMPLE_TMP"' EXIT
+    git show "${CURRENT_REF}:config.example.yaml" > "$OLD_EXAMPLE_TMP" 2>/dev/null || true
+    git show "${LATEST_TAG}:config.example.yaml" > "$NEW_EXAMPLE_TMP" 2>/dev/null || true
+
+    NEW_KEYS="$("$PYTHON_BIN" "$SCRIPT_DIR/merge_config.py" \
+        --old-example "$OLD_EXAMPLE_TMP" --new-example "$NEW_EXAMPLE_TMP" \
+        --config "$SCRIPT_DIR/config.yaml" 2>&1)" && MERGE_RC=0 || MERGE_RC=$?
+
+    if [ "$MERGE_RC" -eq 0 ]; then
+        echo
+        log "New config.yaml option(s) available in this release:"
+        echo "$NEW_KEYS" | sed 's/^/    /'
+        read -r -p "Add these to your config.yaml (a backup will be made first)? [y/N] " CONFIG_REPLY
+        CONFIG_REPLY="${CONFIG_REPLY:-N}"
+        if [[ "$CONFIG_REPLY" =~ ^[Yy] ]]; then
+            BACKUP_PATH="$SCRIPT_DIR/config.yaml.bak.${CURRENT_REF}.$(date +%Y%m%d%H%M%S)"
+            cp "$SCRIPT_DIR/config.yaml" "$BACKUP_PATH"
+            log "Backed up config.yaml to $BACKUP_PATH"
+            "$PYTHON_BIN" "$SCRIPT_DIR/merge_config.py" \
+                --old-example "$OLD_EXAMPLE_TMP" --new-example "$NEW_EXAMPLE_TMP" \
+                --config "$SCRIPT_DIR/config.yaml" --apply >/dev/null
+            log "Added the new option(s) to config.yaml."
+        else
+            log "Skipped - config.yaml left unchanged."
+        fi
+    elif [ "$MERGE_RC" -ne 1 ]; then
+        warn "Couldn't check for new config options: $NEW_KEYS"
+        warn "Review the config.example.yaml diff above manually if needed."
+    fi
+
+    rm -f "$OLD_EXAMPLE_TMP" "$NEW_EXAMPLE_TMP"
+    trap - EXIT
+elif [ -n "$CONFIG_DIFF" ]; then
     warn "Remember to review the config.example.yaml diff above."
 fi
