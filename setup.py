@@ -32,6 +32,24 @@ DEFAULT_THRESHOLDS_CELSIUS = {
     "dust": 50.0,
 }
 
+DISCLAIMER = """\
+==============================================================================
+ weatherman - weather & air quality monitor with ntfy alerts
+==============================================================================
+This software is provided "AS IS", without warranty of any kind, express or
+implied, including but not limited to warranties of merchantability, fitness
+for a particular purpose, and noninfringement. Use it at your own risk. The
+authors accept no liability for missed, delayed, or incorrect alerts, or for
+any damages arising from the use of this software. This is a personal
+home-automation project, not a certified weather or safety system - do not
+rely on it as your sole source of severe-weather or air-quality warnings.
+
+Credits:
+  Omer David (omerdvd@gmail.com)
+  Claude (Anthropic) - https://claude.ai/code
+==============================================================================
+"""
+
 
 def prompt(msg, default=None):
     suffix = f" [{default}]" if default is not None else ""
@@ -61,8 +79,8 @@ def parse_latlon(text):
 def ask_location():
     print("\n--- Location ---")
     print("How do you want to provide your location?")
-    print("  1) GPS coordinates (e.g. 32.8526, 35.0895)")
-    print("  2) Google Maps Plus Code (e.g. V33Q+3Q5 Kiryat Motzkin)")
+    print("  1) GPS coordinates (e.g. 40.68922388147081, -74.04448846124427)")
+    print("  2) Google Maps Plus Code (e.g. MXQ4+M5 New York, USA)")
     choice = prompt("Enter 1 or 2", "1")
 
     if choice == "1":
@@ -71,11 +89,11 @@ def ask_location():
             latlon = parse_latlon(text)
             if latlon:
                 return latlon
-            print("Couldn't parse that. Example: 32.8526, 35.0895")
+            print("Couldn't parse that. Example: 40.68922388147081, -74.04448846124427")
 
     # Plus code path
     while True:
-        code = prompt("Enter the Plus Code (optionally followed by a city, e.g. 'V33Q+3Q5 Kiryat Motzkin')")
+        code = prompt("Enter the Plus Code (optionally followed by a city, e.g. 'MXQ4+M5 New York, USA')")
         if not code:
             continue
         parts = code.split(None, 1)
@@ -126,6 +144,31 @@ def convert_thresholds(units):
     return t
 
 
+def print_ntfy_setup_guide(username, topic):
+    print(f"""
+--- ntfy server setup guide ---
+Run these commands ON YOUR NTFY SERVER (not this LXC), in this order,
+as root/sudo:
+
+  1) Create a dedicated user for this service:
+       sudo ntfy user add {username}
+     (you'll be prompted to set a password - you can just press enter/pick
+     anything, since we'll use a token below instead of the password)
+
+  2) Grant that user write access to the topic:
+       sudo ntfy access {username} {topic} write
+
+  3) Generate an access token for that user:
+       sudo ntfy token add {username}
+     Copy the token it prints (starts with 'tk_') - you'll paste it in below.
+
+  4) Verify the permissions took effect:
+       sudo ntfy access
+     You should see '{username} ... write-only access to topic {topic}'.
+--------------------------------
+""")
+
+
 def ask_ntfy():
     print("\n--- ntfy notifications ---")
     print("  1) Public ntfy.sh service")
@@ -145,8 +188,20 @@ def ask_ntfy():
 
     auth = {}
     if choice == "2":
-        needs_auth = prompt("Does this server require authentication? (y/N)", "N").strip().lower()
-        if needs_auth.startswith("y"):
+        want_help = prompt(
+            "Do you want help setting up the user/permissions/token on your "
+            "private ntfy server? (Y/n)", "Y"
+        ).strip().lower()
+        if want_help.startswith("y"):
+            ntfy_username = prompt(
+                "What username should be created on the ntfy server for this service?",
+                "weatherman",
+            )
+            print_ntfy_setup_guide(ntfy_username, topic)
+            input("Press Enter once you've run those commands and have your token ready...")
+
+        needs_auth = prompt("Does this server require authentication? (Y/n)", "Y").strip().lower()
+        if not needs_auth.startswith("n"):
             auth_type = prompt("Use (T)oken or (U)sername/password?", "T").strip().upper()
             if auth_type.startswith("T"):
                 auth["token"] = prompt("Enter ntfy access token")
@@ -183,6 +238,9 @@ def ask_scheduler(config_path):
 
 
 def main():
+    print(DISCLAIMER)
+    input("Press Enter to continue, or Ctrl+C to exit...")
+
     if CONFIG_PATH.exists():
         overwrite = prompt(f"{CONFIG_PATH.name} already exists. Overwrite? (y/N)", "N")
         if not overwrite.strip().lower().startswith("y"):

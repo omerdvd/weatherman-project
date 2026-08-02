@@ -6,10 +6,10 @@
 # fill it in manually.
 
 location:
-  name: "Kiryat Motzkin"
-  latitude: 32.8526
-  longitude: 35.0895
-  timezone: "Asia/Jerusalem"
+  name: "New York"
+  latitude: 40.68922388147081
+  longitude: -74.04448846124427
+  timezone: "America/New_York"
 
 # "celsius" or "fahrenheit". Controls both the units fetched from the weather
 # API and which threshold keys below are used (temp_high_celsius/

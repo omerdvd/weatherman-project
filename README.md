@@ -115,6 +115,19 @@ push notification via [ntfy](https://ntfy.sh) when conditions look bad
 See [SECURITY.md](SECURITY.md) for notes on secrets handling and network
 exposure.
 
+## Disclaimer
+
+This software is provided "as is", without warranty of any kind, express or
+implied. Use it at your own risk. This is a personal home-automation project,
+not a certified weather or safety system — don't rely on it as your sole
+source of severe-weather or air-quality warnings. See [LICENSE](LICENSE) for
+the full MIT license text.
+
+## Credits
+
+- Omer David ([omerdvd@gmail.com](mailto:omerdvd@gmail.com))
+- Claude ([Anthropic](https://claude.ai/code))
+
 ## License
 
 [MIT](LICENSE)
