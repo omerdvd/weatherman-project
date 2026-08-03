@@ -560,7 +560,24 @@ def ask_scheduler(config_path):
 
 
 def clear_screen():
+    if not sys.stdout.isatty():
+        return
     os.system("cls" if os.name == "nt" else "clear")
+
+
+def print_recap(recap):
+    """Clear the screen and reprint what's been set so far, before starting
+    the next section. Never called mid-section - a section's own retries/
+    error messages (bad input, disambiguation, etc.) stay fully visible."""
+    clear_screen()
+    for line in recap:
+        print(f"✓ {line}")
+    if recap:
+        print()
+
+
+def _provider_label(name):
+    return providers.PROVIDER_INFO.get(name, {}).get("label", name)
 
 
 def main():
@@ -574,14 +591,37 @@ def main():
             print("Aborted.")
             sys.exit(0)
 
-    lat, lon = ask_location()
-    units = ask_units()
-    weather_provider = ask_weather_provider()
-    server, topic, auth = ask_ntfy()
+    recap = []
 
+    print_recap(recap)
+    lat, lon = ask_location()
+    recap.append(f"Location: {lat:.4f}, {lon:.4f}")
+
+    print_recap(recap)
+    units = ask_units()
+    recap.append(f"Units: {'Fahrenheit' if units == 'fahrenheit' else 'Celsius'}")
+
+    print_recap(recap)
+    weather_provider = ask_weather_provider()
+    recap.append(f"Weather provider: {_provider_label(weather_provider['name'])}")
+
+    print_recap(recap)
+    server, topic, auth = ask_ntfy()
+    server_desc = "public ntfy.sh" if server == "https://ntfy.sh" else "private server"
+    recap.append(f"ntfy: {server_desc}, topic '{topic}'")
+
+    print_recap(recap)
     location_name = prompt("Enter a short name for this location (used in alert titles)", "Home")
     timezone = ask_timezone()
+    recap.append(f"Location name: {location_name}")
+    recap.append(f"Timezone: {timezone}")
+
+    print_recap(recap)
     daily_digest = ask_daily_digest()
+    if daily_digest.get("enabled"):
+        recap.append(f"Daily digest: enabled, {daily_digest['time']} ({daily_digest.get('time_format', '24h')})")
+    else:
+        recap.append("Daily digest: disabled")
 
     config = {
         "location": {
@@ -608,7 +648,9 @@ def main():
 
     print(f"\nWrote {CONFIG_PATH}")
     print("Test it with: python3 weatherman.py --dry-run")
+    recap.append(f"Config written to {CONFIG_PATH.name}")
 
+    print_recap(recap)
     ask_scheduler(CONFIG_PATH)
 
 
