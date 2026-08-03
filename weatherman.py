@@ -6,7 +6,9 @@ import json
 import logging
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import requests
 import yaml
@@ -14,6 +16,42 @@ import yaml
 WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
 AIR_QUALITY_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 THUNDERSTORM_CODES = {95, 96, 99}
+
+# WMO weather interpretation codes (used by Open-Meteo) -> (emoji, description)
+WEATHER_CODE_INFO = {
+    0: ("☀️", "Clear sky"),
+    1: ("🌤️", "Mainly clear"),
+    2: ("⛅", "Partly cloudy"),
+    3: ("☁️", "Overcast"),
+    45: ("🌫️", "Fog"),
+    48: ("🌫️", "Depositing rime fog"),
+    51: ("🌦️", "Light drizzle"),
+    53: ("🌦️", "Moderate drizzle"),
+    55: ("🌦️", "Dense drizzle"),
+    56: ("🌧️", "Light freezing drizzle"),
+    57: ("🌧️", "Dense freezing drizzle"),
+    61: ("🌧️", "Slight rain"),
+    63: ("🌧️", "Moderate rain"),
+    65: ("🌧️", "Heavy rain"),
+    66: ("🌧️", "Light freezing rain"),
+    67: ("🌧️", "Heavy freezing rain"),
+    71: ("❄️", "Slight snow fall"),
+    73: ("❄️", "Moderate snow fall"),
+    75: ("❄️", "Heavy snow fall"),
+    77: ("❄️", "Snow grains"),
+    80: ("🌦️", "Slight rain showers"),
+    81: ("🌧️", "Moderate rain showers"),
+    82: ("🌧️", "Violent rain showers"),
+    85: ("🌨️", "Slight snow showers"),
+    86: ("🌨️", "Heavy snow showers"),
+    95: ("⛈️", "Thunderstorm"),
+    96: ("⛈️", "Thunderstorm with slight hail"),
+    99: ("⛈️", "Thunderstorm with heavy hail"),
+}
+
+
+def describe_weathercode(code):
+    return WEATHER_CODE_INFO.get(code, ("🌡️", "Unknown"))
 
 STATE_FILE = Path(__file__).parent / "state.json"
 
@@ -46,6 +84,7 @@ def fetch_weather(cfg):
         "longitude": cfg["location"]["longitude"],
         "timezone": cfg["location"].get("timezone", "auto"),
         "hourly": "temperature_2m,precipitation_probability,precipitation,weathercode,windspeed_10m",
+        "daily": "weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum",
         "forecast_days": 2,
         "temperature_unit": units,
         "windspeed_unit": "mph" if units == "fahrenheit" else "kmh",
@@ -124,16 +163,14 @@ def evaluate(cfg, weather, air_quality):
     return alerts
 
 
-def send_ntfy(cfg, alerts):
+def send_ntfy_message(cfg, title, body, tags="", priority="default"):
     ntfy = cfg["ntfy"]
     url = f"{ntfy['server'].rstrip('/')}/{ntfy['topic']}"
-    body = "\n".join(f"- {a}" for a in alerts)
-    location_name = cfg["location"].get("name", "your area")
 
     headers = {
-        "Title": f"Weather/AQI alert: {location_name}".encode("utf-8"),
-        "Priority": "high",
-        "Tags": "warning,partly_sunny",
+        "Title": title.encode("utf-8"),
+        "Priority": priority,
+        "Tags": tags,
     }
     auth = None
     if ntfy.get("token"):
@@ -143,7 +180,78 @@ def send_ntfy(cfg, alerts):
 
     resp = requests.post(url, data=body.encode("utf-8"), headers=headers, auth=auth, timeout=20)
     resp.raise_for_status()
+
+
+def send_ntfy(cfg, alerts):
+    body = "\n".join(f"- {a}" for a in alerts)
+    location_name = cfg["location"].get("name", "your area")
+    send_ntfy_message(
+        cfg,
+        title=f"Weather/AQI alert: {location_name}",
+        body=body,
+        tags="warning,partly_sunny",
+        priority="high",
+    )
     log.info("Sent ntfy alert: %s", alerts)
+
+
+def build_daily_digest(cfg, weather):
+    daily = weather["daily"]
+    units = cfg.get("units", "celsius")
+    temp_symbol = "°F" if units == "fahrenheit" else "°C"
+    day_labels = ["Today", "Tomorrow"]
+
+    lines = []
+    for i, label in enumerate(day_labels):
+        if i >= len(daily["time"]):
+            break
+        emoji, desc = describe_weathercode(daily["weathercode"][i])
+        hi = daily["temperature_2m_max"][i]
+        lo = daily["temperature_2m_min"][i]
+        line = f"{emoji} {label} ({daily['time'][i]}): {desc}, H:{hi:.0f}{temp_symbol} L:{lo:.0f}{temp_symbol}"
+        precip_prob = daily.get("precipitation_probability_max", [None] * len(daily["time"]))[i]
+        if precip_prob is not None:
+            line += f", {precip_prob:.0f}% chance of rain"
+        lines.append(line)
+
+    return "\n".join(lines)
+
+
+def handle_daily_digest(cfg, weather, state, args):
+    digest_cfg = cfg.get("daily_digest") or {}
+    if not digest_cfg.get("enabled"):
+        return
+
+    tz_name = weather.get("timezone") or cfg["location"].get("timezone") or "UTC"
+    try:
+        now_local = datetime.now(ZoneInfo(tz_name))
+    except Exception:
+        now_local = datetime.utcnow()
+
+    today_str = now_local.strftime("%Y-%m-%d")
+    digest_time = digest_cfg.get("time", "07:00")
+    already_sent_today = state.get("last_digest_date") == today_str
+    time_reached = now_local.strftime("%H:%M") >= digest_time
+
+    if not args.force:
+        if already_sent_today:
+            return
+        if not time_reached:
+            return
+
+    body = build_daily_digest(cfg, weather)
+    location_name = cfg["location"].get("name", "your area")
+    title = f"Daily forecast: {location_name}"
+
+    log.info("Sending daily digest.")
+    if args.dry_run:
+        print(body)
+        return
+
+    send_ntfy_message(cfg, title=title, body=body, tags="calendar", priority="default")
+    state["last_digest_date"] = today_str
+    save_state(state)
+    log.info("Sent daily digest.")
 
 
 def main():
@@ -158,7 +266,7 @@ def main():
     )
     parser.add_argument(
         "--force", action="store_true",
-        help="Ignore the alert cooldown and send even if a recent alert was already sent",
+        help="Ignore the alert cooldown/daily-digest schedule and send anyway",
     )
     args = parser.parse_args()
 
@@ -176,22 +284,21 @@ def main():
 
     if not alerts:
         log.info("No alert conditions met.")
-        return
+    else:
+        cooldown = cfg.get("alert_cooldown_minutes", 180) * 60
+        last_sent = state.get("last_alert_sent", 0)
+        if not args.force and time.time() - last_sent < cooldown:
+            log.info("Alert conditions met but still within cooldown; skipping send. Alerts: %s", alerts)
+        else:
+            log.info("Alert conditions met: %s", alerts)
+            if args.dry_run:
+                print("\n".join(alerts))
+            else:
+                send_ntfy(cfg, alerts)
+                state["last_alert_sent"] = time.time()
+                save_state(state)
 
-    cooldown = cfg.get("alert_cooldown_minutes", 180) * 60
-    last_sent = state.get("last_alert_sent", 0)
-    if not args.force and time.time() - last_sent < cooldown:
-        log.info("Alert conditions met but still within cooldown; skipping send. Alerts: %s", alerts)
-        return
-
-    log.info("Alert conditions met: %s", alerts)
-    if args.dry_run:
-        print("\n".join(alerts))
-        return
-
-    send_ntfy(cfg, alerts)
-    state["last_alert_sent"] = time.time()
-    save_state(state)
+    handle_daily_digest(cfg, weather, state, args)
 
 
 if __name__ == "__main__":

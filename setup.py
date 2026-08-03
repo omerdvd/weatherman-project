@@ -372,6 +372,58 @@ def ask_timezone():
                   f"larger/nearby) city, or press Enter with no city to auto-detect.")
 
 
+def _parse_time_24h(text):
+    text = text.strip()
+    parts = text.split(":")
+    if len(parts) != 2:
+        return None
+    try:
+        hour, minute = int(parts[0]), int(parts[1])
+    except ValueError:
+        return None
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return None
+    return f"{hour:02d}:{minute:02d}"
+
+
+def _parse_time_12h(text):
+    import datetime as _datetime
+
+    text = text.strip().upper().replace(".", "")
+    for fmt in ("%I:%M %p", "%I:%M%p", "%I %p", "%I%p"):
+        try:
+            parsed = _datetime.datetime.strptime(text, fmt)
+            return parsed.strftime("%H:%M")
+        except ValueError:
+            continue
+    return None
+
+
+def ask_daily_digest():
+    print("\n--- Daily forecast digest ---")
+    print("Get a single push each day with today's and tomorrow's forecast")
+    print("(with a weather emoji), sent to the same ntfy topic as alerts.")
+    enable = prompt("Enable the daily forecast digest? (Y/n)", "Y").strip().lower()
+    if enable.startswith("n"):
+        return {"enabled": False, "time": "07:00"}
+
+    fmt = prompt("Enter the time in (1) 24-hour or (2) 12-hour format?", "1").strip()
+    use_12h = fmt == "2"
+
+    while True:
+        if use_12h:
+            text = prompt("What time should it be sent? (e.g. '7:30 AM')")
+            parsed = _parse_time_12h(text) if text else None
+            example = "7:30 AM"
+        else:
+            text = prompt("What time should it be sent? (e.g. '07:30')")
+            parsed = _parse_time_24h(text) if text else None
+            example = "07:30"
+        if parsed:
+            return {"enabled": True, "time": parsed}
+        print(f"Couldn't parse that. Example: '{example}'")
+
+
 def convert_thresholds(units):
     t = dict(DEFAULT_THRESHOLDS_CELSIUS)
     if units == "fahrenheit":
@@ -497,6 +549,7 @@ def main():
 
     location_name = prompt("Enter a short name for this location (used in alert titles)", "Home")
     timezone = ask_timezone()
+    daily_digest = ask_daily_digest()
 
     config = {
         "location": {
@@ -514,6 +567,7 @@ def main():
         "thresholds": convert_thresholds(units),
         "forecast_hours": 24,
         "alert_cooldown_minutes": 180,
+        "daily_digest": daily_digest,
     }
 
     with open(CONFIG_PATH, "w") as f:
