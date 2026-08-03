@@ -427,6 +427,38 @@ def ask_daily_digest():
         print(f"Couldn't parse that. Example: '{example}'")
 
 
+def ask_quiet_hours():
+    print("\n--- Quiet hours ---")
+    print("Suppress non-critical alerts during a window (e.g. overnight) so a")
+    print("worsening forecast doesn't push at 3 AM. Thunderstorms still get")
+    print("through regardless - everything else just re-checks on the next")
+    print("scheduled run once quiet hours end. The daily digest isn't affected.")
+    enable = prompt("Enable quiet hours? (y/N)", "N").strip().lower()
+    if not enable.startswith("y"):
+        return {"enabled": False, "start": "23:00", "end": "07:00"}
+
+    fmt = prompt("Enter times in (1) 24-hour or (2) 12-hour format?", "1").strip()
+    use_12h = fmt == "2"
+
+    def ask_time(label, example_24h, example_12h):
+        while True:
+            if use_12h:
+                text = prompt(f"{label} (e.g. '{example_12h}')")
+                parsed = _parse_time_12h(text) if text else None
+                example = example_12h
+            else:
+                text = prompt(f"{label} (e.g. '{example_24h}')")
+                parsed = _parse_time_24h(text) if text else None
+                example = example_24h
+            if parsed:
+                return parsed
+            print(f"Couldn't parse that. Example: '{example}'")
+
+    start = ask_time("Quiet hours start", "23:00", "11:00 PM")
+    end = ask_time("Quiet hours end", "07:00", "7:00 AM")
+    return {"enabled": True, "start": start, "end": end}
+
+
 def convert_thresholds(units):
     t = dict(DEFAULT_THRESHOLDS_CELSIUS)
     if units == "fahrenheit":
@@ -623,6 +655,13 @@ def main():
     else:
         recap.append("Daily digest: disabled")
 
+    print_recap(recap)
+    quiet_hours = ask_quiet_hours()
+    if quiet_hours.get("enabled"):
+        recap.append(f"Quiet hours: enabled, {quiet_hours['start']}–{quiet_hours['end']}")
+    else:
+        recap.append("Quiet hours: disabled")
+
     config = {
         "location": {
             "name": location_name,
@@ -641,6 +680,7 @@ def main():
         "forecast_hours": 24,
         "alert_cooldown_minutes": 180,
         "daily_digest": daily_digest,
+        "quiet_hours": quiet_hours,
     }
 
     with open(CONFIG_PATH, "w") as f:

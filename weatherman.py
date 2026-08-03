@@ -193,6 +193,38 @@ def send_ntfy(cfg, alerts):
     log.info("Sent ntfy alert: %s", alerts)
 
 
+def _get_local_now(cfg, weather):
+    tz_name = weather.get("timezone") or cfg["location"].get("timezone") or "UTC"
+    try:
+        return datetime.now(ZoneInfo(tz_name))
+    except Exception:
+        return datetime.utcnow()
+
+
+def in_quiet_hours(cfg, now_local):
+    """True if `now_local` falls within the configured quiet_hours window.
+    Handles a window that spans midnight (e.g. start=23:00, end=07:00)."""
+    qh = cfg.get("quiet_hours") or {}
+    if not qh.get("enabled"):
+        return False
+
+    start = qh.get("start", "23:00")
+    end = qh.get("end", "07:00")
+    now_str = now_local.strftime("%H:%M")
+
+    if start <= end:
+        return start <= now_str < end
+    return now_str >= start or now_str < end
+
+
+def _is_critical_alert(alert):
+    """Alerts severe enough to bypass quiet hours. Currently just
+    thunderstorms - routine threshold alerts (temp/wind/AQI/rain) are
+    suppressed during quiet hours and simply re-evaluated on the next
+    scheduled run once quiet hours end, rather than queued for delivery."""
+    return alert == "Thunderstorms forecast"
+
+
 def _format_display_time(hhmm, time_format):
     """Format an internal 24h 'HH:MM' string per the user's chosen display
     format ('12h' or '24h'), matching the format they entered the daily
@@ -244,11 +276,7 @@ def handle_daily_digest(cfg, weather, state, args):
     if not digest_cfg.get("enabled"):
         return
 
-    tz_name = weather.get("timezone") or cfg["location"].get("timezone") or "UTC"
-    try:
-        now_local = datetime.now(ZoneInfo(tz_name))
-    except Exception:
-        now_local = datetime.utcnow()
+    now_local = _get_local_now(cfg, weather)
 
     today_str = now_local.strftime("%Y-%m-%d")
     digest_time = digest_cfg.get("time", "07:00")
@@ -307,18 +335,28 @@ def main():
     if not alerts:
         log.info("No alert conditions met.")
     else:
-        cooldown = cfg.get("alert_cooldown_minutes", 180) * 60
-        last_sent = state.get("last_alert_sent", 0)
-        if not args.force and time.time() - last_sent < cooldown:
-            log.info("Alert conditions met but still within cooldown; skipping send. Alerts: %s", alerts)
+        alerts_to_send = alerts
+        if not args.force and in_quiet_hours(cfg, _get_local_now(cfg, weather)):
+            alerts_to_send = [a for a in alerts if _is_critical_alert(a)]
+            suppressed = [a for a in alerts if a not in alerts_to_send]
+            if suppressed:
+                log.info("Quiet hours active; suppressing non-critical alerts: %s", suppressed)
+
+        if not alerts_to_send:
+            pass
         else:
-            log.info("Alert conditions met: %s", alerts)
-            if args.dry_run:
-                print("\n".join(alerts))
+            cooldown = cfg.get("alert_cooldown_minutes", 180) * 60
+            last_sent = state.get("last_alert_sent", 0)
+            if not args.force and time.time() - last_sent < cooldown:
+                log.info("Alert conditions met but still within cooldown; skipping send. Alerts: %s", alerts_to_send)
             else:
-                send_ntfy(cfg, alerts)
-                state["last_alert_sent"] = time.time()
-                save_state(state)
+                log.info("Alert conditions met: %s", alerts_to_send)
+                if args.dry_run:
+                    print("\n".join(alerts_to_send))
+                else:
+                    send_ntfy(cfg, alerts_to_send)
+                    state["last_alert_sent"] = time.time()
+                    save_state(state)
 
     handle_daily_digest(cfg, weather, state, args)
 

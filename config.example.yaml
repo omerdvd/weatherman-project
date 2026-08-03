@@ -77,3 +77,14 @@ daily_digest:
   time_format: "24h"     # "24h" or "12h" - purely a display preference: how
                          # `time` was entered in setup.py, and how sunrise/
                          # sunset are shown in the digest message
+
+# Suppress non-critical alerts during this window (e.g. overnight) so a
+# worsening forecast doesn't push in the middle of the night. Thunderstorms
+# still get through regardless; everything else (temp/wind/AQI/rain) is
+# suppressed and simply re-checked on the next scheduled run once quiet
+# hours end - nothing is queued for later delivery. The daily digest isn't
+# affected by this setting.
+quiet_hours:
+  enabled: false
+  start: "23:00"   # always 24-hour HH:MM internally, in the location's timezone
+  end: "07:00"     # window can wrap past midnight (start > end), as here

@@ -104,6 +104,9 @@ OpenWeatherMap/WeatherAPI.com/Tomorrow.io if you'd rather use one of those
      sunrise/sunset), and what time to send it — enter the time in either
      12-hour (`7:30 AM`) or 24-hour (`07:30`) format, whichever you prefer;
      the same format is then used to display sunrise/sunset in the digest.
+   - **Quiet hours**: an optional window (e.g. overnight) during which
+     non-critical alerts are suppressed instead of pushed immediately —
+     off by default.
    - **Scheduling**: how the periodic check should run —
      - *systemd timer* (needs root; if not run as root, prints the manual
        `systemctl`/unit-file steps instead of failing)
@@ -142,6 +145,13 @@ OpenWeatherMap/WeatherAPI.com/Tomorrow.io if you'd rather use one of those
 - To avoid notification spam, it won't re-send while conditions remain bad
   within `alert_cooldown_minutes` (default 180) of the last alert. Once
   conditions clear and re-trigger later, a new alert fires immediately.
+- If `quiet_hours.enabled` is set, alerts other than thunderstorms are
+  suppressed while the current local time falls within
+  `quiet_hours.start`–`quiet_hours.end` (the window can wrap past midnight,
+  e.g. `23:00`–`07:00`). Suppressed alerts aren't queued for later delivery —
+  they're simply re-evaluated fresh on the next scheduled run once quiet
+  hours end, same as any other alert. `--force` bypasses quiet hours
+  entirely, for testing. The daily digest is unaffected by this setting.
 - If `daily_digest.enabled` is set, every run also checks whether it's past
   `daily_digest.time` (in the location's timezone) and today's digest hasn't
   been sent yet; if so, it pushes today's and tomorrow's forecast — high/low
