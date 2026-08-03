@@ -96,9 +96,10 @@ OpenWeatherMap/WeatherAPI.com/Tomorrow.io if you'd rather use one of those
      server (you'll be asked for its `https://` URL and, optionally,
      token/username+password auth), plus the topic name to publish to.
    - **Daily digest**: whether to also send a daily push with today's and
-     tomorrow's forecast (with a weather emoji), and what time to send it —
-     enter the time in either 12-hour (`7:30 AM`) or 24-hour (`07:30`)
-     format, whichever you prefer.
+     tomorrow's forecast (weather emoji, high/low temp, chance of rain,
+     sunrise/sunset), and what time to send it — enter the time in either
+     12-hour (`7:30 AM`) or 24-hour (`07:30`) format, whichever you prefer;
+     the same format is then used to display sunrise/sunset in the digest.
    - **Scheduling**: how the periodic check should run —
      - *systemd timer* (needs root; if not run as root, prints the manual
        `systemctl`/unit-file steps instead of failing)
@@ -140,10 +141,13 @@ OpenWeatherMap/WeatherAPI.com/Tomorrow.io if you'd rather use one of those
 - If `daily_digest.enabled` is set, every run also checks whether it's past
   `daily_digest.time` (in the location's timezone) and today's digest hasn't
   been sent yet; if so, it pushes today's and tomorrow's forecast — high/low
-  temp, chance of rain, and a weather emoji (☀️🌧️⛈️❄️ etc.) per day — to the
-  same ntfy topic as alerts. Since this is only checked on the regular
-  schedule, actual delivery can lag the configured time by up to your
-  scheduling interval (e.g. up to ~30 minutes with the default). Use
+  temp, chance of rain, a weather emoji (☀️🌧️⛈️❄️ etc.), and sunrise/sunset
+  (🌅/🌇) per day — to the same ntfy topic as alerts. If the active weather
+  provider doesn't supply real per-day sunrise/sunset (only OpenWeatherMap's
+  free tier doesn't), one extra free/keyless call is made to Open-Meteo for
+  just that data rather than approximating it. Since this is only checked on
+  the regular schedule, actual delivery can lag the configured time by up to
+  your scheduling interval (e.g. up to ~30 minutes with the default). Use
   `--force` to send it immediately regardless of time/already-sent, for
   testing.
 - State (last alert timestamp, last digest date) is kept in `state.json`

@@ -193,11 +193,26 @@ def send_ntfy(cfg, alerts):
     log.info("Sent ntfy alert: %s", alerts)
 
 
+def _format_display_time(hhmm, time_format):
+    """Format an internal 24h 'HH:MM' string per the user's chosen display
+    format ('12h' or '24h'), matching the format they entered the daily
+    digest send time in during setup."""
+    if not hhmm:
+        return None
+    if time_format == "12h":
+        return datetime.strptime(hhmm, "%H:%M").strftime("%I:%M %p").lstrip("0")
+    return hhmm
+
+
 def build_daily_digest(cfg, weather):
     daily = weather["daily"]
     units = cfg.get("units", "celsius")
     temp_symbol = "°F" if units == "fahrenheit" else "°C"
     day_labels = ["Today", "Tomorrow"]
+    time_format = (cfg.get("daily_digest") or {}).get("time_format", "24h")
+    n_days = len(daily["time"])
+    sunrises = daily.get("sunrise") or [None] * n_days
+    sunsets = daily.get("sunset") or [None] * n_days
 
     lines = []
     for i, label in enumerate(day_labels):
@@ -212,6 +227,13 @@ def build_daily_digest(cfg, weather):
         precip_prob = daily.get("precipitation_probability_max", [None] * len(daily["time"]))[i]
         if precip_prob is not None:
             line += f", {precip_prob:.0f}% chance of rain"
+
+        sunrise = _format_display_time(sunrises[i] if i < len(sunrises) else None, time_format)
+        sunset = _format_display_time(sunsets[i] if i < len(sunsets) else None, time_format)
+        if sunrise:
+            line += f", 🌅 {sunrise}"
+        if sunset:
+            line += f" 🌇 {sunset}"
         lines.append(line)
 
     return "\n".join(lines)

@@ -63,9 +63,17 @@ forecast_hours: 24
 # Avoid re-sending the same alert repeatedly within this many minutes
 alert_cooldown_minutes: 180
 
-# Daily push with today's and tomorrow's forecast (with a weather emoji),
-# sent to the same ntfy topic as alerts. Checked on every scheduled run, so
-# actual delivery can lag `time` by up to your scheduling interval.
+# Daily push with today's and tomorrow's forecast (weather emoji, high/low
+# temp, chance of rain, sunrise/sunset), sent to the same ntfy topic as
+# alerts. Checked on every scheduled run, so actual delivery can lag `time`
+# by up to your scheduling interval.
+#
+# Sunrise/sunset: if the active weather_provider doesn't supply a real
+# per-day value (currently only OpenWeatherMap's free tier doesn't), one
+# extra free/keyless call is made to Open-Meteo for just that data.
 daily_digest:
   enabled: true
-  time: "07:00"   # 24-hour HH:MM, in the location's timezone
+  time: "07:00"          # always 24-hour HH:MM internally, in the location's timezone
+  time_format: "24h"     # "24h" or "12h" - purely a display preference: how
+                         # `time` was entered in setup.py, and how sunrise/
+                         # sunset are shown in the digest message
