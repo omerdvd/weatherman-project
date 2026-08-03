@@ -31,7 +31,11 @@ OpenWeatherMap/WeatherAPI.com/Tomorrow.io if you'd rather use one of those
   (Celsius/Fahrenheit), which weather provider to use, ntfy settings (public
   ntfy.sh or a private server + topic), and the daily digest (on/off, and
   what time to send it, in either 12-hour or 24-hour format), then writes
-  `config.yaml` for you.
+  `config.yaml` for you. Clears the screen between each section and shows a
+  running recap (`✓ Location: ...`, `✓ Units: ...`) of what's already been
+  set, so the terminal doesn't fill up with the entire session's scrollback —
+  screen clearing is skipped automatically when output isn't a real terminal
+  (piped, redirected, run non-interactively).
 - `pluscode.py` — decodes Google Maps Plus Codes to GPS coordinates, used by
   `setup.py`. No external geocoding API needed for full codes; short codes
   (e.g. `V33Q+3Q5`) are resolved using a nearby reference city/coordinates.
