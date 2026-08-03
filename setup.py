@@ -403,13 +403,15 @@ def _parse_time_12h(text):
 def ask_daily_digest():
     print("\n--- Daily forecast digest ---")
     print("Get a single push each day with today's and tomorrow's forecast")
-    print("(with a weather emoji), sent to the same ntfy topic as alerts.")
+    print("(weather emoji, high/low temp, chance of rain, sunrise/sunset),")
+    print("sent to the same ntfy topic as alerts.")
     enable = prompt("Enable the daily forecast digest? (Y/n)", "Y").strip().lower()
     if enable.startswith("n"):
-        return {"enabled": False, "time": "07:00"}
+        return {"enabled": False, "time": "07:00", "time_format": "24h"}
 
     fmt = prompt("Enter the time in (1) 24-hour or (2) 12-hour format?", "1").strip()
     use_12h = fmt == "2"
+    time_format = "12h" if use_12h else "24h"
 
     while True:
         if use_12h:
@@ -421,7 +423,7 @@ def ask_daily_digest():
             parsed = _parse_time_24h(text) if text else None
             example = "07:30"
         if parsed:
-            return {"enabled": True, "time": parsed}
+            return {"enabled": True, "time": parsed, "time_format": time_format}
         print(f"Couldn't parse that. Example: '{example}'")
 
 

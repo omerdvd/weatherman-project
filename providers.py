@@ -12,9 +12,20 @@ threshold checks work everywhere), but not a literal "dust" metric or a
 0-500 US AQI - their own air-quality indices use different scales, so
 those two fields come back as None (and are skipped, not faked) for
 non-Open-Meteo providers.
+
+Sunrise/sunset: OpenWeatherMap's free forecast endpoint only gives one
+sunrise/sunset pair (today's, at request time), not a per-day value for
+tomorrow too. Rather than approximate, fetch_weather() transparently makes
+one extra (free, keyless) call to Open-Meteo's daily sunrise/sunset fields
+whenever the active provider's daily data doesn't already include them, and
+fills both days in from that single consistent source.
 """
 
+import logging
+
 import requests
+
+log = logging.getLogger("weatherman")
 
 OPEN_METEO_WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
 OPEN_METEO_AIR_QUALITY_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
@@ -68,6 +79,43 @@ def _bucket_daily_from_hourly(dates, temps, precip_probs, weathercodes):
     }
 
 
+def _extract_hhmm(value):
+    """Normalize a provider's sunrise/sunset value into 24h 'HH:MM'.
+
+    Accepts Open-Meteo/Tomorrow.io-style ISO strings ('...T06:13...') or
+    WeatherAPI-style 12-hour strings ('6:13 AM')."""
+    if not value:
+        return None
+    if "T" in value:
+        return value.split("T")[1][:5]
+    import datetime as _datetime
+
+    cleaned = value.strip().upper().replace(".", "")
+    for fmt in ("%I:%M %p", "%I:%M%p"):
+        try:
+            return _datetime.datetime.strptime(cleaned, fmt).strftime("%H:%M")
+        except ValueError:
+            continue
+    return None
+
+
+def _fetch_sunrise_sunset_open_meteo(cfg):
+    params = {
+        "latitude": cfg["location"]["latitude"],
+        "longitude": cfg["location"]["longitude"],
+        "timezone": cfg["location"].get("timezone", "auto"),
+        "daily": "sunrise,sunset",
+        "forecast_days": 2,
+    }
+    resp = requests.get(OPEN_METEO_WEATHER_URL, params=params, timeout=20)
+    resp.raise_for_status()
+    daily = resp.json().get("daily", {})
+    return {
+        "sunrise": [_extract_hhmm(v) for v in daily.get("sunrise", [])],
+        "sunset": [_extract_hhmm(v) for v in daily.get("sunset", [])],
+    }
+
+
 def _empty_aq_hourly(times):
     n = len(times)
     return {
@@ -88,14 +136,20 @@ def _fetch_weather_open_meteo(cfg):
         "longitude": cfg["location"]["longitude"],
         "timezone": cfg["location"].get("timezone", "auto"),
         "hourly": "temperature_2m,precipitation_probability,precipitation,weathercode,windspeed_10m",
-        "daily": "weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum",
+        "daily": "weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,sunrise,sunset",
         "forecast_days": 2,
         "temperature_unit": units,
         "windspeed_unit": "mph" if units == "fahrenheit" else "kmh",
     }
     resp = requests.get(OPEN_METEO_WEATHER_URL, params=params, timeout=20)
     resp.raise_for_status()
-    return resp.json()
+    data = resp.json()
+    daily = data.get("daily", {})
+    if "sunrise" in daily:
+        daily["sunrise"] = [_extract_hhmm(v) for v in daily["sunrise"]]
+    if "sunset" in daily:
+        daily["sunset"] = [_extract_hhmm(v) for v in daily["sunset"]]
+    return data
 
 
 def _fetch_air_quality_open_meteo(cfg):
@@ -233,6 +287,7 @@ def _fetch_weather_weatherapi(cfg):
 
     hourly_time, hourly_temp, hourly_prob, hourly_precip, hourly_code, hourly_wind = [], [], [], [], [], []
     daily_time, daily_code, daily_max, daily_min, daily_prob = [], [], [], [], []
+    daily_sunrise, daily_sunset = [], []
 
     for day in forecast_days:
         daily_time.append(day["date"])
@@ -241,6 +296,9 @@ def _fetch_weather_weatherapi(cfg):
         daily_min.append(c_to_unit(day_info["mintemp_c"]))
         daily_prob.append(day_info.get("daily_chance_of_rain", 0))
         daily_code.append(_WEATHERAPI_CODE_TO_WMO.get(day_info["condition"]["code"], 3))
+        astro = day.get("astro", {})
+        daily_sunrise.append(_extract_hhmm(astro.get("sunrise")))
+        daily_sunset.append(_extract_hhmm(astro.get("sunset")))
 
         for hour in day.get("hour", []):
             hourly_time.append(hour["time"].replace(" ", "T"))
@@ -266,6 +324,8 @@ def _fetch_weather_weatherapi(cfg):
             "temperature_2m_max": daily_max,
             "temperature_2m_min": daily_min,
             "precipitation_probability_max": daily_prob,
+            "sunrise": daily_sunrise,
+            "sunset": daily_sunset,
         },
     }
 
@@ -324,7 +384,7 @@ def _fetch_weather_tomorrowio(cfg):
         "apikey": api_key,
         "units": "imperial" if units == "fahrenheit" else "metric",
         "timesteps": "1h,1d",
-        "fields": "temperature,precipitationProbability,weatherCode,windSpeed,temperatureMax,temperatureMin",
+        "fields": "temperature,precipitationProbability,weatherCode,windSpeed,temperatureMax,temperatureMin,sunriseTime,sunsetTime",
     }
     resp = requests.get(TOMORROWIO_TIMELINES_URL, params=params, timeout=20)
     resp.raise_for_status()
@@ -344,6 +404,7 @@ def _fetch_weather_tomorrowio(cfg):
         hourly_wind.append(values.get("windSpeed", 0))
 
     daily_time, daily_code, daily_max, daily_min, daily_prob = [], [], [], [], []
+    daily_sunrise, daily_sunset = [], []
     for interval in daily_intervals:
         values = interval["values"]
         daily_time.append(interval["startTime"][:10])
@@ -351,6 +412,8 @@ def _fetch_weather_tomorrowio(cfg):
         daily_max.append(values.get("temperatureMax"))
         daily_min.append(values.get("temperatureMin"))
         daily_prob.append(values.get("precipitationProbability", 0))
+        daily_sunrise.append(_extract_hhmm(values.get("sunriseTime")))
+        daily_sunset.append(_extract_hhmm(values.get("sunsetTime")))
 
     return {
         "timezone": cfg["location"].get("timezone", "UTC"),
@@ -368,6 +431,8 @@ def _fetch_weather_tomorrowio(cfg):
             "temperature_2m_max": daily_max,
             "temperature_2m_min": daily_min,
             "precipitation_probability_max": daily_prob,
+            "sunrise": daily_sunrise,
+            "sunset": daily_sunset,
         },
     }
 
@@ -460,10 +525,39 @@ def _provider_name(cfg):
     return (cfg.get("weather_provider") or {}).get("name", "open-meteo")
 
 
+def _ensure_sunrise_sunset(cfg, data):
+    """If the active provider's daily data is missing sunrise/sunset (only
+    OpenWeatherMap's free endpoint lacks a real per-day value today), fill
+    both days in from a single extra Open-Meteo call rather than mixing
+    sources or approximating."""
+    daily = data.get("daily") or {}
+    sunrise = daily.get("sunrise")
+    sunset = daily.get("sunset")
+    has_valid = (
+        sunrise and sunset
+        and all(v is not None for v in sunrise)
+        and all(v is not None for v in sunset)
+    )
+    if has_valid:
+        return
+
+    try:
+        fallback = _fetch_sunrise_sunset_open_meteo(cfg)
+    except requests.RequestException as e:
+        log.warning("Could not fetch sunrise/sunset fallback from Open-Meteo: %s", e)
+        return
+
+    daily["sunrise"] = fallback["sunrise"]
+    daily["sunset"] = fallback["sunset"]
+    data["daily"] = daily
+
+
 def fetch_weather(cfg):
     name = _provider_name(cfg)
     fetcher = _WEATHER_FETCHERS.get(name, _fetch_weather_open_meteo)
-    return fetcher(cfg)
+    data = fetcher(cfg)
+    _ensure_sunrise_sunset(cfg, data)
+    return data
 
 
 def fetch_air_quality(cfg):
