@@ -13,6 +13,7 @@ from pathlib import Path
 import requests
 import yaml
 
+import providers
 import scheduler
 import timezones
 from pluscode import PlusCodeError, resolve
@@ -460,6 +461,34 @@ as root/sudo:
 """)
 
 
+def ask_weather_provider():
+    print("\n--- Weather provider ---")
+    print("Which weather data provider should be used?")
+    names = list(providers.PROVIDER_INFO.keys())
+    for i, name in enumerate(names, 1):
+        info = providers.PROVIDER_INFO[name]
+        suffix = " (needs a free API key)" if info["needs_api_key"] else " (current default, no API key needed)"
+        print(f"  {i}) {info['label']}{suffix}")
+    choice = prompt(f"Enter 1-{len(names)}", "1")
+    try:
+        index = int(choice) - 1
+        name = names[index]
+    except (ValueError, IndexError):
+        name = "open-meteo"
+
+    info = providers.PROVIDER_INFO[name]
+    if not info["needs_api_key"]:
+        return {"name": name}
+
+    print(f"\n{info['label']} requires a free API key:")
+    print(f"  Sign up: {info['signup_url']}")
+    print(f"  {info['instructions']}")
+    api_key = prompt(f"Enter your {info['label']} API key")
+    while not api_key:
+        api_key = prompt("An API key is required for this provider. Enter it now")
+    return {"name": name, "api_key": api_key}
+
+
 def ask_ntfy():
     print("\n--- ntfy notifications ---")
     print("  1) Public ntfy.sh service")
@@ -545,6 +574,7 @@ def main():
 
     lat, lon = ask_location()
     units = ask_units()
+    weather_provider = ask_weather_provider()
     server, topic, auth = ask_ntfy()
 
     location_name = prompt("Enter a short name for this location (used in alert titles)", "Home")
@@ -559,6 +589,7 @@ def main():
             "timezone": timezone,
         },
         "units": units,
+        "weather_provider": weather_provider,
         "ntfy": {
             "server": server,
             "topic": topic,

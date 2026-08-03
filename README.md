@@ -1,11 +1,14 @@
 # weatherman-project
 
 Monitors the weather forecast and air quality (dust/PM10/PM2.5) for a fixed
-location using the free [Open-Meteo](https://open-meteo.com) API, and sends a
-push notification via [ntfy](https://ntfy.sh) when conditions look bad
-(rain/storms, extreme temperatures, strong wind, or poor air quality). Can
-also send a daily forecast digest — today's and tomorrow's weather with an
-emoji for conditions at a glance — at a time of your choosing.
+location, and sends a push notification via [ntfy](https://ntfy.sh) when
+conditions look bad (rain/storms, extreme temperatures, strong wind, or poor
+air quality). Can also send a daily forecast digest — today's and tomorrow's
+weather with an emoji for conditions at a glance — at a time of your
+choosing. Weather data comes from a pluggable provider: the free
+[Open-Meteo](https://open-meteo.com) API by default (no key needed), or
+OpenWeatherMap/WeatherAPI.com/Tomorrow.io if you'd rather use one of those
+(free API key required) — see [Weather providers](#weather-providers) below.
 
 ## Files
 
@@ -14,14 +17,21 @@ emoji for conditions at a glance — at a time of your choosing.
   missing (Python 3, the `venv` module, pip, a cron daemon, CA certificates),
   creates a virtualenv, installs the Python requirements, then offers to
   launch `setup.py`. Safe to re-run — it skips anything already installed.
-- `weatherman.py` — the check script. Fetches forecast + air quality, evaluates
-  thresholds, sends an ntfy push if any are exceeded, and (if enabled) sends
-  the daily forecast digest once it's past the configured time each day.
+- `weatherman.py` — the check script. Fetches forecast + air quality (via
+  whichever provider is configured), evaluates thresholds, sends an ntfy push
+  if any are exceeded, and (if enabled) sends the daily forecast digest once
+  it's past the configured time each day.
+- `providers.py` — the weather-provider abstraction. Each provider (Open-Meteo,
+  OpenWeatherMap, WeatherAPI.com, Tomorrow.io) has its own fetch function that
+  normalizes that provider's response into the same shape, so the rest of the
+  app doesn't need to know which one is active. See
+  [Weather providers](#weather-providers) below.
 - `setup.py` — interactive installer. Prompts for your location (GPS
   coordinates, a Google Maps Plus Code, or a city + country), preferred units
-  (Celsius/Fahrenheit), ntfy settings (public ntfy.sh or a private server +
-  topic), and the daily digest (on/off, and what time to send it, in either
-  12-hour or 24-hour format), then writes `config.yaml` for you.
+  (Celsius/Fahrenheit), which weather provider to use, ntfy settings (public
+  ntfy.sh or a private server + topic), and the daily digest (on/off, and
+  what time to send it, in either 12-hour or 24-hour format), then writes
+  `config.yaml` for you.
 - `pluscode.py` — decodes Google Maps Plus Codes to GPS coordinates, used by
   `setup.py`. No external geocoding API needed for full codes; short codes
   (e.g. `V33Q+3Q5`) are resolved using a nearby reference city/coordinates.
@@ -78,6 +88,10 @@ emoji for conditions at a glance — at a time of your choosing.
      resolve unambiguously — you'll be prompted for one.
    - **Units**: Celsius or Fahrenheit — this sets both the units fetched from
      the weather API and which threshold keys are used.
+   - **Weather provider**: Open-Meteo (default, no API key), or
+     OpenWeatherMap/WeatherAPI.com/Tomorrow.io if you provide a free API key —
+     see [Weather providers](#weather-providers) below for signup links and
+     what each one supports.
    - **ntfy**: the public `https://ntfy.sh` service, or your own private
      server (you'll be asked for its `https://` URL and, optionally,
      token/username+password auth), plus the topic name to publish to.
@@ -134,6 +148,34 @@ emoji for conditions at a glance — at a time of your choosing.
   testing.
 - State (last alert timestamp, last digest date) is kept in `state.json`
   next to the script.
+
+## Weather providers
+
+`weather_provider.name` in `config.yaml` selects the data source. All four
+return the same alert/digest behavior — the difference is API key
+requirements and air-quality coverage:
+
+| Provider | API key | Signup | PM10/PM2.5 | Dust | US AQI (0-500) |
+|---|---|---|---|---|---|
+| `open-meteo` (default) | Not needed | — | ✅ | ✅ | ✅ |
+| `openweathermap` | Free | [Sign up](https://home.openweathermap.org/users/sign_up) | ✅ | ❌ | ❌ |
+| `weatherapi` | Free | [Sign up](https://www.weatherapi.com/signup.aspx) | ✅ | ❌ | ❌ |
+| `tomorrowio` | Free | [Sign up](https://app.tomorrow.io/signup) | ✅ | ❌ | ❌ |
+
+Only Open-Meteo provides a real "dust" concentration and a numeric 0-500 US
+AQI; the other three give raw PM10/PM2.5 concentrations (so those threshold
+checks keep working) but their own air-quality indices use different scales,
+so `dust`/`us_aqi` alerts are silently skipped — not faked — when using them.
+
+For OpenWeatherMap specifically: use a plain API key from the "API keys" tab
+after signup, not a One Call 3.0 subscription — this project only calls the
+free `data/2.5/forecast` and `data/2.5/air_pollution` endpoints, which need
+no billing/credit card setup. New OpenWeatherMap keys can take up to ~2
+hours to activate after creation.
+
+`setup.py` walks you through all of this interactively (including printing
+the right signup link) — the table above is mainly useful if you're editing
+`config.yaml` by hand or switching providers later.
 
 ## Updating
 
