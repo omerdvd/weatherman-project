@@ -16,6 +16,19 @@ location:
 # wind_speed_kmh vs temp_high_fahrenheit/wind_speed_mph).
 units: celsius
 
+# Which weather data source to use. "open-meteo" (default) needs no API key.
+# The other three need a free key from the provider (see README for signup
+# links) - add it as `api_key:` below.
+#
+# Note: only Open-Meteo provides a real "dust" concentration and a numeric
+# 0-500 US AQI. The other providers give PM10/PM2.5 concentrations (so those
+# threshold checks still work), but their own air-quality indices use
+# different scales, so `dust`/`us_aqi` alerts are always skipped (not faked)
+# when using them.
+weather_provider:
+  name: open-meteo   # open-meteo | openweathermap | weatherapi | tomorrowio
+  # api_key: ""       # required for any provider other than open-meteo
+
 ntfy:
   server: "https://ntfy.example.com"   # or "https://ntfy.sh" for the public service
   topic: "weather-alerts"

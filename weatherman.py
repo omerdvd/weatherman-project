@@ -13,8 +13,8 @@ from zoneinfo import ZoneInfo
 import requests
 import yaml
 
-WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
-AIR_QUALITY_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
+import providers
+
 THUNDERSTORM_CODES = {95, 96, 99}
 
 # WMO weather interpretation codes (used by Open-Meteo) -> (emoji, description)
@@ -78,32 +78,11 @@ def save_state(state):
 
 
 def fetch_weather(cfg):
-    units = cfg.get("units", "celsius")
-    params = {
-        "latitude": cfg["location"]["latitude"],
-        "longitude": cfg["location"]["longitude"],
-        "timezone": cfg["location"].get("timezone", "auto"),
-        "hourly": "temperature_2m,precipitation_probability,precipitation,weathercode,windspeed_10m",
-        "daily": "weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum",
-        "forecast_days": 2,
-        "temperature_unit": units,
-        "windspeed_unit": "mph" if units == "fahrenheit" else "kmh",
-    }
-    resp = requests.get(WEATHER_URL, params=params, timeout=20)
-    resp.raise_for_status()
-    return resp.json()
+    return providers.fetch_weather(cfg)
 
 
 def fetch_air_quality(cfg):
-    params = {
-        "latitude": cfg["location"]["latitude"],
-        "longitude": cfg["location"]["longitude"],
-        "hourly": "pm10,pm2_5,dust,us_aqi",
-        "forecast_days": 2,
-    }
-    resp = requests.get(AIR_QUALITY_URL, params=params, timeout=20)
-    resp.raise_for_status()
-    return resp.json()
+    return providers.fetch_air_quality(cfg)
 
 
 def evaluate(cfg, weather, air_quality):
@@ -119,45 +98,64 @@ def evaluate(cfg, weather, air_quality):
     wind_key = "wind_speed_mph" if is_fahrenheit else "wind_speed_kmh"
     alerts = []
 
+    def _max_or_none(values):
+        present = [v for v in values if v is not None]
+        return max(present) if present else None
+
+    def _min_or_none(values):
+        present = [v for v in values if v is not None]
+        return min(present) if present else None
+
     w_hourly = weather["hourly"]
     n = min(hours, len(w_hourly["time"]))
 
-    max_temp = max(w_hourly["temperature_2m"][:n])
-    min_temp = min(w_hourly["temperature_2m"][:n])
-    max_precip_prob = max(w_hourly["precipitation_probability"][:n])
-    max_precip_mm = max(w_hourly["precipitation"][:n])
-    max_wind = max(w_hourly["windspeed_10m"][:n])
-    codes = w_hourly["weathercode"][:n]
+    max_temp = _max_or_none(w_hourly["temperature_2m"][:n])
+    min_temp = _min_or_none(w_hourly["temperature_2m"][:n])
+    max_precip_prob = _max_or_none(w_hourly["precipitation_probability"][:n])
+    max_precip_mm = _max_or_none(w_hourly["precipitation"][:n])
+    max_wind = _max_or_none(w_hourly["windspeed_10m"][:n])
+    codes = [c for c in w_hourly["weathercode"][:n] if c is not None]
     has_storm = any(c in THUNDERSTORM_CODES for c in codes)
 
-    if max_precip_prob >= t["precipitation_probability_percent"] or max_precip_mm >= t["precipitation_mm"]:
+    # An empty/missing hourly window (e.g. a provider hiccup) skips these
+    # checks rather than crashing - same spirit as the air-quality checks
+    # below, which already tolerate providers missing individual metrics.
+    if max_precip_prob is not None and max_precip_mm is not None and (
+        max_precip_prob >= t["precipitation_probability_percent"] or max_precip_mm >= t["precipitation_mm"]
+    ):
         alerts.append(
             f"Rain expected: up to {max_precip_prob:.0f}% chance, {max_precip_mm:.1f}mm/h"
         )
     if t.get("thunderstorm") and has_storm:
         alerts.append("Thunderstorms forecast")
-    if max_temp >= t[temp_high_key]:
+    if max_temp is not None and max_temp >= t[temp_high_key]:
         alerts.append(f"High temperature: {max_temp:.1f}{temp_symbol}")
-    if min_temp <= t[temp_low_key]:
+    if min_temp is not None and min_temp <= t[temp_low_key]:
         alerts.append(f"Low temperature: {min_temp:.1f}{temp_symbol}")
-    if max_wind >= t[wind_key]:
+    if max_wind is not None and max_wind >= t[wind_key]:
         alerts.append(f"Strong wind: {max_wind:.0f} {wind_unit}")
 
     aq_hourly = air_quality["hourly"]
     n_aq = min(hours, len(aq_hourly["time"]))
 
-    max_pm10 = max(v for v in aq_hourly["pm10"][:n_aq] if v is not None)
-    max_pm2_5 = max(v for v in aq_hourly["pm2_5"][:n_aq] if v is not None)
-    max_dust = max(v for v in aq_hourly["dust"][:n_aq] if v is not None)
-    max_us_aqi = max(v for v in aq_hourly["us_aqi"][:n_aq] if v is not None)
+    def _max_or_none(values):
+        present = [v for v in values if v is not None]
+        return max(present) if present else None
 
-    if max_pm10 >= t["pm10"]:
+    max_pm10 = _max_or_none(aq_hourly["pm10"][:n_aq])
+    max_pm2_5 = _max_or_none(aq_hourly["pm2_5"][:n_aq])
+    max_dust = _max_or_none(aq_hourly["dust"][:n_aq])
+    max_us_aqi = _max_or_none(aq_hourly["us_aqi"][:n_aq])
+
+    # dust and us_aqi aren't available from every provider (see providers.py) -
+    # skip those checks entirely rather than crash or falsely alert on None.
+    if max_pm10 is not None and max_pm10 >= t["pm10"]:
         alerts.append(f"Poor air quality: PM10 up to {max_pm10:.0f} µg/m³")
-    if max_pm2_5 >= t["pm2_5"]:
+    if max_pm2_5 is not None and max_pm2_5 >= t["pm2_5"]:
         alerts.append(f"Poor air quality: PM2.5 up to {max_pm2_5:.0f} µg/m³")
-    if max_dust >= t["dust"]:
+    if max_dust is not None and max_dust >= t["dust"]:
         alerts.append(f"Dust alert: dust concentration up to {max_dust:.0f} µg/m³")
-    if max_us_aqi >= t["us_aqi"]:
+    if max_us_aqi is not None and max_us_aqi >= t["us_aqi"]:
         alerts.append(f"Poor air quality: US AQI up to {max_us_aqi:.0f}")
 
     return alerts
@@ -208,7 +206,9 @@ def build_daily_digest(cfg, weather):
         emoji, desc = describe_weathercode(daily["weathercode"][i])
         hi = daily["temperature_2m_max"][i]
         lo = daily["temperature_2m_min"][i]
-        line = f"{emoji} {label} ({daily['time'][i]}): {desc}, H:{hi:.0f}{temp_symbol} L:{lo:.0f}{temp_symbol}"
+        hi_str = f"H:{hi:.0f}{temp_symbol}" if hi is not None else "H:?"
+        lo_str = f"L:{lo:.0f}{temp_symbol}" if lo is not None else "L:?"
+        line = f"{emoji} {label} ({daily['time'][i]}): {desc}, {hi_str} {lo_str}"
         precip_prob = daily.get("precipitation_probability_max", [None] * len(daily["time"]))[i]
         if precip_prob is not None:
             line += f", {precip_prob:.0f}% chance of rain"
