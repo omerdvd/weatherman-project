@@ -298,7 +298,12 @@ def handle_daily_digest(cfg, weather, state, args):
         print(body)
         return
 
-    send_ntfy_message(cfg, title=title, body=body, tags="calendar", priority="default")
+    try:
+        send_ntfy_message(cfg, title=title, body=body, tags="calendar", priority="default")
+    except requests.RequestException as e:
+        log.error("Failed to send daily digest to ntfy: %s", e)
+        return
+
     state["last_digest_date"] = today_str
     save_state(state)
     log.info("Sent daily digest.")
@@ -354,9 +359,13 @@ def main():
                 if args.dry_run:
                     print("\n".join(alerts_to_send))
                 else:
-                    send_ntfy(cfg, alerts_to_send)
-                    state["last_alert_sent"] = time.time()
-                    save_state(state)
+                    try:
+                        send_ntfy(cfg, alerts_to_send)
+                    except requests.RequestException as e:
+                        log.error("Failed to send alert to ntfy: %s", e)
+                    else:
+                        state["last_alert_sent"] = time.time()
+                        save_state(state)
 
     handle_daily_digest(cfg, weather, state, args)
 
