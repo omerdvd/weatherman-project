@@ -166,6 +166,13 @@ OpenWeatherMap/WeatherAPI.com/Tomorrow.io if you'd rather use one of those
   testing.
 - State (last alert timestamp, last digest date) is kept in `state.json`
   next to the script.
+- If sending to ntfy itself fails (wrong/expired token, network issue, ntfy
+  server down, etc.), that's logged as an error rather than crashing the
+  script — forecast fetching and alert evaluation for that run already
+  succeeded independently, and neither the alert cooldown nor the digest's
+  "already sent today" state is advanced on a failed send, so it retries
+  automatically on the next scheduled run rather than silently going quiet
+  until the next unrelated code change.
 
 ## Weather providers
 
