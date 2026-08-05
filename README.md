@@ -1,5 +1,15 @@
 # weatherman-project
 
+[![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Bash](https://img.shields.io/badge/Bash-4%2B-4EAA25?style=for-the-badge&logo=gnubash&logoColor=white)](https://www.gnu.org/software/bash/)
+[![systemd](https://img.shields.io/badge/systemd-timer-white?style=for-the-badge&logo=systemd&logoColor=black&labelColor=grey)](https://systemd.io/)
+[![Cron](https://img.shields.io/badge/Cron-supported-blue?style=for-the-badge)](https://en.wikipedia.org/wiki/Cron)
+[![Git](https://img.shields.io/badge/Git-tag--based%20releases-F05032?style=for-the-badge&logo=git&logoColor=white)](https://git-scm.com/)
+[![Proxmox VE](https://img.shields.io/badge/Proxmox%20VE-LXC-E57000?style=for-the-badge&logo=proxmox&logoColor=white)](https://www.proxmox.com/)
+[![ntfy](https://img.shields.io/badge/ntfy-push%20notifications-6C63FF?style=for-the-badge)](https://ntfy.sh/)
+[![YAML](https://img.shields.io/badge/YAML-config-CB171E?style=for-the-badge&logo=yaml&logoColor=white)](https://yaml.org/)
+[![Open-Meteo](https://img.shields.io/badge/Open--Meteo-default%20provider-000000?style=for-the-badge)](https://open-meteo.com/)
+
 Monitors the weather forecast and air quality (dust/PM10/PM2.5) for a fixed
 location, and sends a push notification via [ntfy](https://ntfy.sh) when
 conditions look bad (rain/storms, extreme temperatures, strong wind, or poor
